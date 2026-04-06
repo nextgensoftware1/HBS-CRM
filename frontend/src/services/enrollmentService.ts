@@ -1,6 +1,6 @@
 // frontend/src/services/enrollmentService.ts
 import api from './api';
-import { Enrollment, PaginatedResponse } from '../types/types';
+import { Enrollment } from '../types/types';
 
 type Pagination = {
   total: number;

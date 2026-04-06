@@ -20,6 +20,14 @@ type ClientOption = {
   name: string;
 };
 
+type IntakeOption = 'group' | 'individual' | 'both' | '';
+
+type InsuranceSelection = {
+  clientId: string;
+  clientName: string;
+  insurance: string;
+};
+
 type EnrollmentFormData = {
   providerType: 'medical' | 'behavioral' | 'other' | '';
   providerTypeOther: string;
@@ -148,14 +156,15 @@ export default function DocumentUpload() {
 	const [searchParams] = useSearchParams();
   const [providers, setProviders] = useState<ProviderItem[]>([]);
   const [loadingProviders, setLoadingProviders] = useState(true);
-  const [selectedClientId, setSelectedClientId] = useState('');
-  const [selectedInsurance, setSelectedInsurance] = useState('');
-  const [providerId, setProviderId] = useState('');
+  const [selectedIntakeOption, setSelectedIntakeOption] = useState<IntakeOption>('');
+  const [selectedInsuranceKeys, setSelectedInsuranceKeys] = useState<string[]>([]);
   const [formData, setFormData] = useState<EnrollmentFormData>(initialFormData);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const hasAppliedPrefill = useRef(false);
+
+  const getInsuranceKey = (clientId: string, insurance: string) => `${clientId}::${insurance}`;
 
   useEffect(() => {
     const loadProviders = async () => {
@@ -185,31 +194,50 @@ export default function DocumentUpload() {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [providers]);
 
-  const selectedClientName = useMemo(() => {
-    const selected = clientOptions.find((item) => item.id === selectedClientId);
-    return selected?.name || '';
-  }, [clientOptions, selectedClientId]);
+  const selectedInsuranceSelections = useMemo<InsuranceSelection[]>(() => {
+    return selectedInsuranceKeys
+      .map((key) => {
+        const [clientId, ...parts] = key.split('::');
+        const insurance = parts.join('::');
+        if (!clientId || !insurance) return null;
 
-  const clientProviders = useMemo(() => {
-    if (!selectedClientId) return [];
-    return providers.filter((provider) => typeof provider.clientId === 'object' && provider.clientId?._id === selectedClientId);
-  }, [providers, selectedClientId]);
+        const client = clientOptions.find((item) => item.id === clientId);
+        return {
+          clientId,
+          clientName: client?.name || 'Unknown Client',
+          insurance,
+        };
+      })
+      .filter(Boolean) as InsuranceSelection[];
+  }, [selectedInsuranceKeys, clientOptions]);
 
-  const insuranceOptions = useMemo(() => {
-    const collected: string[] = [];
-    for (const provider of clientProviders) {
-      for (const insurance of provider.insuranceServices || []) {
-        const value = String(insurance || '').trim();
-        if (value) collected.push(value);
+  const clientInsuranceRows = useMemo(() => {
+    return clientOptions.map((client) => {
+      const rows = providers.filter((provider) => typeof provider.clientId === 'object' && provider.clientId?._id === client.id);
+      const insuranceProviderMap = new Map<string, string[]>();
+
+      for (const provider of rows) {
+        const insurances = (provider.insuranceServices || [])
+          .map((value) => String(value || '').trim())
+          .filter(Boolean);
+
+        for (const insurance of insurances) {
+          const existing = insuranceProviderMap.get(insurance) || [];
+          if (!existing.includes(provider._id)) {
+            existing.push(provider._id);
+          }
+          insuranceProviderMap.set(insurance, existing);
+        }
       }
-    }
-    return Array.from(new Set(collected));
-  }, [clientProviders]);
 
-  useEffect(() => {
-    setSelectedInsurance('');
-    setProviderId('');
-  }, [selectedClientId]);
+      return {
+        clientId: client.id,
+        clientName: client.name,
+        insuranceProviderMap,
+        insurances: Array.from(insuranceProviderMap.keys()),
+      };
+    });
+  }, [clientOptions, providers]);
 
   useEffect(() => {
     if (loadingProviders || hasAppliedPrefill.current) {
@@ -227,29 +255,14 @@ export default function DocumentUpload() {
     const matchedProvider = providers.find((provider) => provider._id === prefillProviderId)
       || providers.find((provider) => (provider.insuranceServices || []).includes(prefillInsurance));
 
-    if (matchedProvider && typeof matchedProvider.clientId === 'object' && matchedProvider.clientId?._id) {
-      setSelectedClientId(matchedProvider.clientId._id);
-      setProviderId(matchedProvider._id);
-    }
-
-    if (prefillInsurance) {
-      setSelectedInsurance(prefillInsurance);
+    if (prefillInsurance && matchedProvider && typeof matchedProvider.clientId === 'object' && matchedProvider.clientId?._id) {
+      setSelectedInsuranceKeys([getInsuranceKey(matchedProvider.clientId._id, prefillInsurance)]);
     }
 
     hasAppliedPrefill.current = true;
   }, [loadingProviders, providers, searchParams]);
 
-  useEffect(() => {
-    if (!selectedInsurance) {
-      setProviderId('');
-      return;
-    }
-
-    const matched = clientProviders.find((provider) => (provider.insuranceServices || []).includes(selectedInsurance));
-    setProviderId(matched?._id || '');
-  }, [selectedInsurance, clientProviders]);
-
-  const checklistVisible = Boolean(selectedClientId && selectedInsurance);
+  const checklistVisible = Boolean(selectedIntakeOption && selectedInsuranceKeys.length > 0);
 
   const uploadedFilesCount = useMemo(
     () => Object.values(formData.documents).filter(Boolean).length,
@@ -294,12 +307,25 @@ export default function DocumentUpload() {
     }));
   };
 
+  const handleInsuranceToggle = (clientId: string, insurance: string) => {
+    if (!insurance) {
+      return;
+    }
+
+    const insuranceKey = getInsuranceKey(clientId, insurance);
+    setSelectedInsuranceKeys((prev) => (
+      prev.includes(insuranceKey)
+        ? prev.filter((item) => item !== insuranceKey)
+        : [...prev, insuranceKey]
+    ));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
 
-    if (!providerId || !selectedClientName || !selectedInsurance) {
+    if (!selectedIntakeOption || selectedInsuranceSelections.length === 0) {
       setError('Please complete Step 1 and Step 2 first');
       return;
     }
@@ -314,26 +340,42 @@ export default function DocumentUpload() {
 
     setSaving(true);
     try {
-      const submissionId = `sub_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      const batchSubmissionId = `sub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+      // Save once per uploaded file, and keep all selected insurances in onboarding payload.
+      const firstSelection = selectedInsuranceSelections[0];
+      const firstClientRow = clientInsuranceRows.find((row) => row.clientId === firstSelection.clientId);
+      const firstProviderIds = firstClientRow?.insuranceProviderMap.get(firstSelection.insurance) || [];
+      const primaryProviderId = firstProviderIds[0];
+
+      if (!primaryProviderId) {
+        throw new Error('No provider found for selected insurance set');
+      }
 
       for (const [key, file] of filesToUpload) {
         const documentLabel = documentLabelMap[key];
         await documentService.uploadDocument({
-          providerId,
-          submissionId,
+          providerId: primaryProviderId,
+          submissionId: batchSubmissionId,
           documentType: documentTypeMap[key],
           file,
           notes: formData.notes
             ? `${documentLabel}\n${formData.notes}`
             : documentLabel,
-          clientName: selectedClientName,
-          insuranceService: selectedInsurance,
-          onboardingData: formData,
+          clientName: firstSelection.clientName,
+          insuranceService: firstSelection.insurance,
+          onboardingData: {
+            ...formData,
+            batchSubmissionId,
+            intakeOption: selectedIntakeOption,
+            selectedInsuranceSelections,
+          },
         });
       }
 
       setSuccess(`${filesToUpload.length} document(s) uploaded successfully`);
       setFormData(initialFormData);
+      setSelectedInsuranceKeys([]);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to upload documents');
     } finally {
@@ -355,42 +397,88 @@ export default function DocumentUpload() {
         <section className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
           <div className="flex items-center gap-2">
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">1</span>
-            <h2 className="font-semibold text-gray-900">Select Client Name</h2>
+            <h2 className="font-semibold text-gray-900">Select Intake Type</h2>
           </div>
-          <select
-            value={selectedClientId}
-            onChange={(e) => setSelectedClientId(e.target.value)}
-            className="w-full md:w-[420px] px-3 py-2 border border-gray-300 rounded-lg"
-            disabled={loadingProviders || saving}
-            required
-          >
-            <option value="">Select client</option>
-            {clientOptions.map((client) => (
-              <option key={client.id} value={client.id}>{client.name}</option>
-            ))}
-          </select>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { label: 'Group', value: 'group' },
+              { label: 'Individual', value: 'individual' },
+              { label: 'Both', value: 'both' },
+            ].map((item) => {
+              const checked = selectedIntakeOption === item.value;
+              return (
+                <label
+                  key={item.value}
+                  className={`flex items-center gap-3 border rounded-lg px-3 py-2 cursor-pointer ${checked ? 'border-primary-500 bg-primary-50' : 'border-gray-300 bg-white'}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => setSelectedIntakeOption(item.value as IntakeOption)}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm font-medium text-gray-800">{item.label}</span>
+                </label>
+              );
+            })}
+          </div>
+          <p className="text-xs text-gray-500">Checklist style with single selection enabled.</p>
         </section>
 
         <section className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
           <div className="flex items-center gap-2">
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">2</span>
-            <h2 className="font-semibold text-gray-900">Select Insurance Service</h2>
+            <h2 className="font-semibold text-gray-900">Select Insurance Services by Client</h2>
           </div>
-          <select
-            value={selectedInsurance}
-            onChange={(e) => setSelectedInsurance(e.target.value)}
-            className="w-full md:w-[420px] px-3 py-2 border border-gray-300 rounded-lg"
-            disabled={!selectedClientId || saving}
-            required
-          >
-            <option value="">Select insurance</option>
-            {insuranceOptions.map((insurance) => (
-              <option key={insurance} value={insurance}>{insurance}</option>
-            ))}
-          </select>
-          {selectedClientId && insuranceOptions.length === 0 && (
-            <p className="text-sm text-amber-700">No insurance services found for this client.</p>
+          {loadingProviders ? (
+            <p className="text-sm text-gray-600">Loading clients and insurance services...</p>
+          ) : (
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700 w-[240px]">Client Name</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Insurance Services (select multiple)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientInsuranceRows.length === 0 ? (
+                    <tr>
+                      <td className="px-4 py-4 text-gray-500" colSpan={2}>No clients found.</td>
+                    </tr>
+                  ) : clientInsuranceRows.map((row) => (
+                    <tr key={row.clientId} className="border-t border-gray-100 bg-white">
+                      <td className="px-4 py-3 text-gray-700 align-top">{row.clientName}</td>
+                      <td className="px-4 py-3">
+                        {row.insurances.length === 0 ? (
+                          <span className="text-xs text-amber-700">No insurance services configured</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-3">
+                            {row.insurances.map((insurance) => {
+                              const checked = selectedInsuranceKeys.includes(getInsuranceKey(row.clientId, insurance));
+                              return (
+                                <label key={`${row.clientId}-${insurance}`} className="inline-flex items-center gap-2 border border-gray-300 rounded-md px-2 py-1 bg-white">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => handleInsuranceToggle(row.clientId, insurance)}
+                                    disabled={saving}
+                                    className="w-4 h-4"
+                                  />
+                                  <span className="text-xs text-gray-700">{insurance}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
+          <p className="text-xs text-gray-500">Select as many insurances as needed across all client rows.</p>
         </section>
 
         {checklistVisible && (
@@ -401,8 +489,8 @@ export default function DocumentUpload() {
             </div>
 
             <div className="rounded-lg border border-gray-200 p-3 bg-slate-50 text-sm text-slate-700">
-              <p><span className="font-semibold">Client:</span> {selectedClientName}</p>
-              <p><span className="font-semibold">Insurance:</span> {selectedInsurance}</p>
+              <p><span className="font-semibold">Intake Type:</span> {selectedIntakeOption || 'N/A'}</p>
+              <p><span className="font-semibold">Selected Insurance Items:</span> {selectedInsuranceSelections.length}</p>
             </div>
 
             <div className="space-y-3 border border-gray-200 rounded-lg p-4">
@@ -519,7 +607,7 @@ export default function DocumentUpload() {
               <p className="text-sm text-gray-600">Files selected: {uploadedFilesCount}</p>
               <button
                 type="submit"
-                disabled={saving || uploadedFilesCount === 0 || !providerId}
+                disabled={saving || uploadedFilesCount === 0 || selectedInsuranceKeys.length === 0 || !selectedIntakeOption}
                 className="px-4 py-2 rounded-lg bg-primary-600 text-white disabled:opacity-50"
               >
                 {saving ? 'Uploading...' : 'Submit Enrollment Documents'}

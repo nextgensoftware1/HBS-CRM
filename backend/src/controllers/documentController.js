@@ -33,22 +33,89 @@ const upload = multer({
   }
 }).single('file');
 
+const getOnboardingSelectionSignature = (metadata = {}) => {
+  const onboarding = metadata.onboardingData || {};
+
+  if (Array.isArray(onboarding.selectedInsuranceSelections)) {
+    return onboarding.selectedInsuranceSelections
+      .map((item) => `${item?.clientId || ''}:${item?.insurance || ''}`)
+      .sort()
+      .join(',');
+  }
+
+  const legacyFormFingerprint = [
+    String(onboarding.legalName || '').trim().toLowerCase(),
+    String(onboarding.taxId || '').trim().toLowerCase(),
+    String(onboarding.npi || '').trim().toLowerCase(),
+    String(onboarding.authorizedPersonName || '').trim().toLowerCase(),
+    String(onboarding.email || '').trim().toLowerCase(),
+  ]
+    .filter(Boolean)
+    .join('|');
+
+  if (legacyFormFingerprint) {
+    return `form:${legacyFormFingerprint}`;
+  }
+
+  const fallbackClient = String(metadata.clientName || '').trim();
+  const fallbackInsurance = String(metadata.insuranceService || '').trim();
+  return `${fallbackClient}:${fallbackInsurance}`;
+};
+
+const getSubmissionHourBucket = (dateValue) => {
+  const timestamp = new Date(dateValue || Date.now()).getTime();
+  return Math.floor(timestamp / (60 * 60 * 1000));
+};
+
+const mergeSelectionArrays = (existingSelections = [], incomingSelections = []) => {
+  const selectionMap = new Map();
+
+  [...existingSelections, ...incomingSelections].forEach((item) => {
+    if (!item || typeof item !== 'object') return;
+
+    const clientId = String(item.clientId || '').trim();
+    const insurance = String(item.insurance || '').trim();
+    if (!clientId || !insurance) return;
+
+    selectionMap.set(`${clientId}::${insurance}`, {
+      clientId,
+      clientName: item.clientName || '',
+      insurance,
+    });
+  });
+
+  return Array.from(selectionMap.values());
+};
+
 const buildSubmissionKey = (doc) => {
   const metadata = doc?.metadata || {};
   const explicitSubmissionId = metadata.submissionId;
   const hasOnboardingPayload = Boolean(metadata.onboardingData);
 
-  const onboardingStableKey = hasOnboardingPayload
-    ? [
-        'onboarding',
-        String(doc.uploadedBy?._id || doc.uploadedBy || ''),
-        String(doc.providerId?._id || doc.providerId || ''),
-        String(metadata.clientName || ''),
-        String(metadata.insuranceService || ''),
-      ].join('|')
-    : null;
+  if (hasOnboardingPayload) {
+    const onboarding = metadata.onboardingData || {};
+    const explicitBatchId = String(onboarding.batchSubmissionId || '').trim();
+    const selectionSignature = getOnboardingSelectionSignature(metadata);
+    const hourBucket = getSubmissionHourBucket(doc.createdAt);
 
-  return onboardingStableKey || explicitSubmissionId || String(doc._id);
+    if (explicitBatchId) {
+      return `onboarding-batch-id|${explicitBatchId}`;
+    }
+
+    return [
+      'onboarding-batch',
+      String(doc.uploadedBy?._id || doc.uploadedBy || ''),
+      String(onboarding.intakeOption || ''),
+      selectionSignature,
+      String(hourBucket),
+    ].join('|');
+  }
+
+  if (explicitSubmissionId) {
+    return explicitSubmissionId;
+  }
+
+  return String(doc._id);
 };
 
 const resolveGroupedStatus = (statuses = []) => {
@@ -64,18 +131,25 @@ const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$
 
 const getSubmissionQuery = (document) => {
   const metadata = document?.metadata || {};
+  const onboardingData = metadata.onboardingData || {};
+  const onboardingBatchId = String(onboardingData.batchSubmissionId || '').trim();
+
+  if (onboardingBatchId) {
+    return {
+      uploadedBy: document.uploadedBy,
+      'metadata.onboardingData.batchSubmissionId': onboardingBatchId,
+    };
+  }
 
   if (metadata.submissionId) {
-    return { 'metadata.submissionId': metadata.submissionId };
+    return {
+      uploadedBy: document.uploadedBy,
+      'metadata.submissionId': metadata.submissionId,
+    };
   }
 
   if (metadata.onboardingData) {
-    return {
-      providerId: document.providerId,
-      uploadedBy: document.uploadedBy,
-      'metadata.clientName': metadata.clientName || null,
-      'metadata.insuranceService': metadata.insuranceService || null,
-    };
+    return { _id: document._id };
   }
 
   return { _id: document._id };
@@ -183,32 +257,8 @@ exports.getAllDocuments = async (req, res) => {
     const groupedMap = new Map();
     for (const doc of allDocuments) {
       const metadata = doc?.metadata || {};
-      const explicitSubmissionId = metadata.submissionId;
       const hasOnboardingPayload = Boolean(metadata.onboardingData);
-      const legacyTimeBucket = new Date(doc.createdAt).toISOString().slice(0, 16); // yyyy-mm-ddThh:mm
-
-      const onboardingStableKey = hasOnboardingPayload
-        ? [
-            'onboarding',
-            String(doc.uploadedBy || ''),
-            String(doc.providerId?._id || doc.providerId || ''),
-            String(metadata.clientName || ''),
-            String(metadata.insuranceService || ''),
-          ].join('|')
-        : null;
-
-      // Backward compatibility: group legacy full-form uploads that were stored without submissionId.
-      const legacyGroupKey = hasOnboardingPayload
-        ? [
-            String(doc.uploadedBy || ''),
-            String(doc.providerId?._id || doc.providerId || ''),
-            String(metadata.clientName || ''),
-            String(metadata.insuranceService || ''),
-            legacyTimeBucket,
-          ].join('|')
-        : null;
-
-      const submissionId = onboardingStableKey || explicitSubmissionId || legacyGroupKey || String(doc._id);
+      const submissionId = buildSubmissionKey(doc);
 
       if (!groupedMap.has(submissionId)) {
         groupedMap.set(submissionId, {
@@ -216,7 +266,13 @@ exports.getAllDocuments = async (req, res) => {
           documentType: hasOnboardingPayload ? 'Insurance Intake Packet' : doc.documentType,
           filesCount: 1,
           fileNames: [doc.fileName],
+          fileNameSet: new Set([doc.fileName]),
           statusList: [doc.status],
+          providerNameSet: new Set([
+            typeof doc.providerId === 'object'
+              ? `${doc.providerId.firstName || ''} ${doc.providerId.lastName || ''}`.trim()
+              : ''
+          ].filter(Boolean)),
           metadata: {
             ...(doc.metadata || {}),
             submissionId,
@@ -224,9 +280,16 @@ exports.getAllDocuments = async (req, res) => {
         });
       } else {
         const existing = groupedMap.get(submissionId);
-        existing.filesCount += 1;
-        existing.fileNames.push(doc.fileName);
+        existing.fileNameSet.add(doc.fileName);
+        existing.filesCount = existing.fileNameSet.size;
+        existing.fileNames = Array.from(existing.fileNameSet);
         existing.statusList.push(doc.status);
+        if (typeof doc.providerId === 'object') {
+          const providerLabel = `${doc.providerId.firstName || ''} ${doc.providerId.lastName || ''}`.trim();
+          if (providerLabel) {
+            existing.providerNameSet.add(providerLabel);
+          }
+        }
 
         // Keep the most recently updated document details as the representative row.
         const currentUpdatedAt = new Date(doc.updatedAt || doc.createdAt).getTime();
@@ -238,7 +301,9 @@ exports.getAllDocuments = async (req, res) => {
             documentType: hasOnboardingPayload ? 'Insurance Intake Packet' : doc.documentType,
             filesCount: existing.filesCount,
             fileNames: existing.fileNames,
+            fileNameSet: existing.fileNameSet,
             statusList: existing.statusList,
+            providerNameSet: existing.providerNameSet,
             metadata: {
               ...(doc.metadata || {}),
               submissionId,
@@ -252,6 +317,11 @@ exports.getAllDocuments = async (req, res) => {
       ...row,
       status: resolveGroupedStatus(row.statusList || []),
       statusList: undefined,
+      fileNameSet: undefined,
+      providerSummary: row.providerNameSet?.size > 1
+        ? `${row.providerNameSet.size} providers`
+        : Array.from(row.providerNameSet || [])[0] || null,
+      providerNameSet: undefined,
     })).sort((a, b) => {
       const aTime = new Date(a.updatedAt || a.createdAt).getTime();
       const bTime = new Date(b.updatedAt || b.createdAt).getTime();
@@ -347,10 +417,18 @@ exports.getDocumentSubmission = async (req, res) => {
     // Pull likely candidates first, then filter by the same grouping key used in list view.
     let candidateQuery = { ...visibilityQuery };
     if (metadata.onboardingData) {
+      const bucket = getSubmissionHourBucket(anchorDocument.createdAt);
+      const bucketStart = new Date(bucket * 60 * 60 * 1000);
+      const bucketEnd = new Date((bucket + 1) * 60 * 60 * 1000);
+
       candidateQuery = {
         ...visibilityQuery,
-        providerId: anchorDocument.providerId?._id || anchorDocument.providerId,
         uploadedBy: anchorDocument.uploadedBy?._id || anchorDocument.uploadedBy,
+        'metadata.onboardingData': { $exists: true },
+        createdAt: {
+          $gte: bucketStart,
+          $lt: bucketEnd,
+        },
       };
     } else if (metadata.submissionId) {
       candidateQuery = {
@@ -377,6 +455,88 @@ exports.getDocumentSubmission = async (req, res) => {
     const submissionId = buildSubmissionKey(anchorDocument);
 
     const latest = docs[0];
+    const providers = Array.from(
+      new Map(
+        docs
+          .map((doc) => {
+            const provider = doc.providerId;
+            if (!provider || typeof provider !== 'object') return null;
+            return [String(provider._id || ''), provider];
+          })
+          .filter(Boolean)
+      ).values()
+    );
+
+    const selectedInsuranceMap = new Map();
+    for (const doc of docs) {
+      const selections = doc?.metadata?.onboardingData?.selectedInsuranceSelections;
+      if (!Array.isArray(selections)) continue;
+
+      for (const item of selections) {
+        if (!item || typeof item !== 'object') continue;
+        const clientId = String(item.clientId || '').trim();
+        const clientName = String(item.clientName || '').trim();
+        const insurance = String(item.insurance || '').trim();
+        if (!clientId || !insurance) continue;
+
+        selectedInsuranceMap.set(`${clientId}::${insurance}`, {
+          clientId,
+          clientName,
+          insurance,
+        });
+      }
+    }
+
+    const selectedInsuranceSelections = Array.from(selectedInsuranceMap.values());
+
+    const clients = selectedInsuranceSelections.length
+      ? Array.from(
+          new Set(
+            selectedInsuranceSelections
+              .map((item) => item.clientName)
+              .filter(Boolean)
+          )
+        )
+      : Array.from(
+          new Set(
+            docs
+              .map((doc) => String(doc?.metadata?.clientName || '').trim())
+              .filter(Boolean)
+          )
+        );
+
+    const insuranceServices = selectedInsuranceSelections.length
+      ? Array.from(
+          new Set(
+            selectedInsuranceSelections
+              .map((item) => item.insurance)
+              .filter(Boolean)
+          )
+        )
+      : Array.from(
+          new Set(
+            docs
+              .map((doc) => String(doc?.metadata?.insuranceService || '').trim())
+              .filter(Boolean)
+          )
+        );
+
+    const uniqueFilesMap = new Map();
+    for (const doc of docs) {
+      const uniqueFileKey = `${doc.documentType}::${doc.fileName}`;
+      if (!uniqueFilesMap.has(uniqueFileKey)) {
+        uniqueFilesMap.set(uniqueFileKey, {
+          _id: doc._id,
+          fileName: doc.fileName,
+          documentType: doc.documentType,
+          status: doc.status,
+          createdAt: doc.createdAt,
+          fileUrl: doc.fileUrl,
+        });
+      }
+    }
+
+    const uniqueFiles = Array.from(uniqueFilesMap.values());
 
     res.status(200).json({
       status: 'success',
@@ -384,21 +544,18 @@ exports.getDocumentSubmission = async (req, res) => {
         submission: {
           submissionId,
           provider: latest.providerId,
+          providers,
           uploadedBy: latest.uploadedBy,
           clientName: latest.metadata?.clientName || null,
+          clients,
           insuranceService: latest.metadata?.insuranceService || null,
+          insuranceServices,
+          selectedInsuranceSelections,
           status: latest.status,
           createdAt: latest.createdAt,
-          filesCount: docs.length,
+          filesCount: uniqueFiles.length,
           onboardingData,
-          files: docs.map((doc) => ({
-            _id: doc._id,
-            fileName: doc.fileName,
-            documentType: doc.documentType,
-            status: doc.status,
-            createdAt: doc.createdAt,
-            fileUrl: doc.fileUrl,
-          })),
+          files: uniqueFiles,
         }
       }
     });
@@ -489,6 +646,46 @@ exports.uploadDocument = async (req, res) => {
         enrollmentId: enrollmentReference,
         documentType,
       };
+
+      const onboardingBatchId = String(parsedOnboardingData?.batchSubmissionId || '').trim();
+      if (onboardingBatchId && !replaceDocumentId) {
+        const existingBatchDocument = await Document.findOne({
+          uploadedBy: req.user._id,
+          documentType,
+          fileName: req.file.originalname,
+          'metadata.onboardingData.batchSubmissionId': onboardingBatchId,
+        });
+
+        if (existingBatchDocument) {
+          const existingOnboarding = existingBatchDocument.metadata?.onboardingData || {};
+          const mergedSelections = mergeSelectionArrays(
+            existingOnboarding.selectedInsuranceSelections || [],
+            parsedOnboardingData.selectedInsuranceSelections || []
+          );
+
+          existingBatchDocument.metadata = {
+            ...(existingBatchDocument.metadata || {}),
+            clientName: clientName || existingBatchDocument.metadata?.clientName || null,
+            insuranceService: insuranceService || existingBatchDocument.metadata?.insuranceService || null,
+            submissionId: submissionId || existingBatchDocument.metadata?.submissionId || null,
+            onboardingData: {
+              ...existingOnboarding,
+              ...parsedOnboardingData,
+              selectedInsuranceSelections: mergedSelections,
+              batchSubmissionId: onboardingBatchId,
+            },
+          };
+
+          await existingBatchDocument.save();
+          await existingBatchDocument.populate('providerId enrollmentId uploadedBy');
+
+          return res.status(200).json({
+            status: 'success',
+            message: 'Document already exists for this submission batch',
+            data: { document: existingBatchDocument }
+          });
+        }
+      }
       
       // Upload file to Google Drive (external storage)
       const uploadResult = await uploadFile(
@@ -703,52 +900,66 @@ exports.updateDocumentStatus = async (req, res) => {
       });
     }
     
-    const oldStatus = document.status;
-    document.status = status;
-    
-    if (status === 'approved') {
-      document.verifiedBy = req.user._id;
-      document.verifiedAt = new Date();
-    }
-    
-    if (status === 'rejected' && rejectionReason) {
-      document.rejectionReason = rejectionReason;
+    const submissionQuery = getSubmissionQuery(document);
+    const targetDocuments = await Document.find(submissionQuery).sort({ createdAt: -1 });
+    const docsToUpdate = targetDocuments.length ? targetDocuments : [document];
+
+    const nowIso = new Date().toISOString();
+    for (const docItem of docsToUpdate) {
+      const oldStatus = docItem.status;
+      docItem.status = status;
+
+      if (status === 'approved') {
+        docItem.verifiedBy = req.user._id;
+        docItem.verifiedAt = new Date();
+        docItem.rejectionReason = null;
+      }
+
+      if (status === 'rejected') {
+        docItem.rejectionReason = rejectionReason || docItem.rejectionReason || null;
+      }
+
+      if (adminNote) {
+        docItem.notes = docItem.notes
+          ? `${docItem.notes}\n[${nowIso}] ${adminNote}`
+          : `[${nowIso}] ${adminNote}`;
+      }
+
+      if (status === 'approved') {
+        await ensureEnrollmentForApprovedDocument(docItem, req.user._id);
+      }
+
+      await docItem.save();
+
+      const enrollment = await Enrollment.findById(docItem.enrollmentId);
+      if (enrollment) {
+        const eventType = status === 'approved'
+          ? 'document_approved'
+          : status === 'rejected'
+            ? 'document_rejected'
+            : 'status_change';
+
+        await enrollment.addTimelineEvent({
+          eventType,
+          eventDescription: `${docItem.documentType} ${status}`,
+          performedBy: req.user._id,
+          metadata: {
+            documentId: docItem._id,
+            oldStatus,
+            newStatus: status,
+            adminNote: adminNote || null,
+          }
+        });
+
+        await enrollment.calculateProgress();
+      }
     }
 
-    if (adminNote) {
-      document.notes = document.notes
-        ? `${document.notes}\n[${new Date().toISOString()}] ${adminNote}`
-        : `[${new Date().toISOString()}] ${adminNote}`;
-    }
-    
-    if (status === 'approved') {
-      await ensureEnrollmentForApprovedDocument(document, req.user._id);
-    }
-
-    await document.save();
-    
-    // Update enrollment timeline
-    const enrollment = await Enrollment.findById(document.enrollmentId);
-    if (enrollment) {
-      const eventType = status === 'approved' ? 'document_approved' : 
-                       status === 'rejected' ? 'document_rejected' : 
-                       'status_change';
-      
-      await enrollment.addTimelineEvent({
-        eventType,
-        eventDescription: `${document.documentType} ${status}`,
-        performedBy: req.user._id,
-        metadata: { documentId: document._id, oldStatus, newStatus: status, adminNote: adminNote || null }
-      });
-      
-      // Recalculate progress
-      await enrollment.calculateProgress();
-    }
-    
-    await document.populate('providerId enrollmentId uploadedBy verifiedBy');
+    const responseDocument = docsToUpdate[0];
+    await responseDocument.populate('providerId enrollmentId uploadedBy verifiedBy');
 
     await createNotification({
-      recipient: document.uploadedBy?._id || document.uploadedBy,
+      recipient: responseDocument.uploadedBy?._id || responseDocument.uploadedBy,
       actor: req.user._id,
       type:
         status === 'approved'
@@ -763,21 +974,22 @@ exports.updateDocumentStatus = async (req, res) => {
             ? 'Document rejected'
             : 'Document status updated',
       message:
-        status === 'rejected' && document.rejectionReason
-          ? `${document.documentType} was rejected. Reason: ${document.rejectionReason}`
-          : `${document.documentType} status updated to ${status}.`,
-      entityId: document._id,
+        status === 'rejected' && rejectionReason
+          ? `${responseDocument.documentType} submission was rejected. Reason: ${rejectionReason}`
+          : `${responseDocument.documentType} submission status updated to ${status}.`,
+      entityId: responseDocument._id,
       metadata: {
-        documentType: document.documentType,
-        fileName: document.fileName,
+        documentType: responseDocument.documentType,
+        fileName: responseDocument.fileName,
         status,
+        affectedFiles: docsToUpdate.length,
       },
     });
     
     res.status(200).json({
       status: 'success',
-      message: 'Document status updated successfully',
-      data: { document }
+      message: 'Document submission status updated successfully',
+      data: { document: responseDocument }
     });
   } catch (error) {
     console.error('Update document status error:', error);
@@ -802,15 +1014,18 @@ exports.deleteDocument = async (req, res) => {
       });
     }
     
-    // Delete file from S3
-    try {
-      await deleteFile(document.fileKey);
-    } catch (s3Error) {
-      console.error('S3 deletion error:', s3Error);
-      // Continue with database deletion even if S3 deletion fails
+    const submissionQuery = getSubmissionQuery(document);
+    const docsToDelete = await Document.find(submissionQuery);
+    const targets = docsToDelete.length ? docsToDelete : [document];
+
+    for (const docItem of targets) {
+      try {
+        await deleteFile(docItem.fileKey);
+      } catch (storageError) {
+        console.error('Storage deletion error:', storageError);
+      }
     }
-    
-    // Delete document from database
+
     const deletedDocumentSnapshot = {
       uploadedBy: document.uploadedBy,
       documentType: document.documentType,
@@ -818,12 +1033,14 @@ exports.deleteDocument = async (req, res) => {
       _id: document._id,
     };
 
-    await document.deleteOne();
-    
-    // Update enrollment progress
-    const enrollment = await Enrollment.findById(document.enrollmentId);
-    if (enrollment) {
-      await enrollment.calculateProgress();
+    await Document.deleteMany({ _id: { $in: targets.map((docItem) => docItem._id) } });
+
+    const enrollmentIds = Array.from(new Set(targets.map((docItem) => String(docItem.enrollmentId || '')).filter(Boolean)));
+    for (const enrollmentId of enrollmentIds) {
+      const enrollment = await Enrollment.findById(enrollmentId);
+      if (enrollment) {
+        await enrollment.calculateProgress();
+      }
     }
 
     await createNotification({
@@ -836,12 +1053,13 @@ exports.deleteDocument = async (req, res) => {
       metadata: {
         documentType: deletedDocumentSnapshot.documentType,
         fileName: deletedDocumentSnapshot.fileName,
+        affectedFiles: targets.length,
       },
     });
     
     res.status(200).json({
       status: 'success',
-      message: 'Document deleted successfully'
+      message: 'Document submission deleted successfully'
     });
   } catch (error) {
     console.error('Delete document error:', error);
