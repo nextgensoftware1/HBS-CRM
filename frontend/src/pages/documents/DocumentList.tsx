@@ -16,7 +16,8 @@ type DocumentRow = {
 	metadata?: {
 		insuranceService?: string;
 	};
-	createdAt: string;
+	providerSummary?: string | null;
+	createdAt: string | Date;
 };
 
 export default function DocumentList() {
@@ -116,6 +117,33 @@ export default function DocumentList() {
 		navigate(`/documents/${doc._id}/submission`);
 	};
 
+	const getProviderDisplayName = (provider: DocumentRow['providerId']) => {
+		if (provider && typeof provider === 'object') {
+			const fullName = `${provider.firstName || ''} ${provider.lastName || ''}`.trim();
+			if (fullName) {
+				return fullName;
+			}
+		}
+
+		return 'N/A';
+	};
+
+	const getProviderColumnValue = (doc: DocumentRow) => {
+		if (doc.providerSummary) {
+			return doc.providerSummary;
+		}
+
+		return getProviderDisplayName(doc.providerId);
+	};
+
+	const getSubmittedByDisplayName = (submittedBy: DocumentRow['uploadedBy']) => {
+		if (!submittedBy || typeof submittedBy !== 'object') {
+			return 'N/A';
+		}
+
+		return submittedBy.fullName || submittedBy.email || 'N/A';
+	};
+
 	const confirmAction = async (note?: string) => {
 		if (!actionModal.documentId || !actionModal.type) return;
 
@@ -210,12 +238,10 @@ export default function DocumentList() {
 											doc.fileName
 										)}
 									</td>
-									<td className="px-4 py-3 text-gray-700">{typeof doc.providerId === 'object' ? `${doc.providerId.firstName || ''} ${doc.providerId.lastName || ''}`.trim() : 'N/A'}</td>
+									<td className="px-4 py-3 text-gray-700">{getProviderColumnValue(doc)}</td>
 									{isAdmin && (
 										<td className="px-4 py-3 text-gray-700">
-											{typeof doc.uploadedBy === 'object'
-												? (doc.uploadedBy.fullName || doc.uploadedBy.email || 'N/A')
-												: 'N/A'}
+											{getSubmittedByDisplayName(doc.uploadedBy)}
 										</td>
 									)}
 									<td className="px-4 py-3"><span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{doc.status}</span></td>

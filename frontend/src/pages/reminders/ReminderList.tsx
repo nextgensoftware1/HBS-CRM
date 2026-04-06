@@ -64,33 +64,6 @@ export default function ReminderList() {
 		setSearchParams(searchParams);
 	};
 
-	const handleComplete = async (id: string) => {
-		try {
-			await reminderService.completeReminder(id);
-			await loadReminders();
-		} catch (err: any) {
-			setError(err.response?.data?.message || 'Failed to complete reminder');
-		}
-	};
-
-	const handleDismiss = async (id: string) => {
-		try {
-			await reminderService.dismissReminder(id);
-			await loadReminders();
-		} catch (err: any) {
-			setError(err.response?.data?.message || 'Failed to dismiss reminder');
-		}
-	};
-
-	const handleDelete = async (id: string) => {
-		try {
-			await reminderService.deleteReminder(id);
-			await loadReminders();
-		} catch (err: any) {
-			setError(err.response?.data?.message || 'Failed to delete reminder');
-		}
-	};
-
 	const openActionModal = (type: 'complete' | 'dismiss' | 'delete', reminderId: string) => {
 		setActionModal({ open: true, type, reminderId });
 	};

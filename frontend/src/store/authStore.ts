@@ -2,6 +2,23 @@
 import { create } from 'zustand';
 import { User } from '../types/types';
 
+const getStoredUser = (): User | null => {
+  const rawUser = localStorage.getItem('user');
+  if (!rawUser) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawUser);
+  } catch {
+    localStorage.removeItem('user');
+    return null;
+  }
+};
+
+const initialUser = getStoredUser();
+const initialToken = localStorage.getItem('token');
+
 interface AuthState {
   user: User | null;
   token: string | null;
@@ -12,9 +29,9 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  user: JSON.parse(localStorage.getItem('user') || 'null'),
-  token: localStorage.getItem('token'),
-  isAuthenticated: !!localStorage.getItem('token'),
+  user: initialUser,
+  token: initialToken,
+  isAuthenticated: !!initialToken,
   
   setAuth: (user, token) => {
     localStorage.setItem('user', JSON.stringify(user));

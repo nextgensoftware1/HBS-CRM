@@ -14,9 +14,17 @@ type SubmissionFile = {
 type SubmissionDetail = {
   submissionId: string;
   provider?: { _id?: string; firstName?: string; lastName?: string; npi?: string };
+  providers?: Array<{ _id?: string; firstName?: string; lastName?: string; npi?: string }>;
   uploadedBy?: { fullName?: string; email?: string };
   clientName?: string;
+  clients?: string[];
   insuranceService?: string;
+  insuranceServices?: string[];
+  selectedInsuranceSelections?: Array<{
+    clientId?: string;
+    clientName?: string;
+    insurance?: string;
+  }>;
   status?: string;
   createdAt?: string;
   filesCount?: number;
@@ -44,6 +52,19 @@ export default function DocumentSubmissionDetail() {
     if (!submission?.provider) return 'N/A';
     return `${submission.provider.firstName || ''} ${submission.provider.lastName || ''}`.trim() || 'N/A';
   }, [submission]);
+
+  const providerNames = useMemo(() => {
+    const list = submission?.providers || [];
+    if (!list.length) {
+      return providerName;
+    }
+
+    const names = list
+      .map((provider) => `${provider.firstName || ''} ${provider.lastName || ''}`.trim())
+      .filter(Boolean);
+
+    return names.length ? names.join(', ') : providerName;
+  }, [submission, providerName]);
 
   const loadSubmission = async (showPageLoader = false) => {
     if (!id) {
@@ -190,12 +211,24 @@ export default function DocumentSubmissionDetail() {
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <section className="bg-white border border-gray-200 rounded-lg p-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-        <p><span className="font-semibold">Provider:</span> {providerName}</p>
+        <p><span className="font-semibold">Providers:</span> {providerNames}</p>
         <p><span className="font-semibold">Provider NPI:</span> {submission.provider?.npi || 'N/A'}</p>
-        <p><span className="font-semibold">Client:</span> {submission.clientName || 'N/A'}</p>
-        <p><span className="font-semibold">Insurance:</span> {submission.insuranceService || 'N/A'}</p>
+        <p><span className="font-semibold">Clients:</span> {submission.clients?.length ? submission.clients.join(', ') : (submission.clientName || 'N/A')}</p>
+        <p><span className="font-semibold">Insurance:</span> {submission.insuranceServices?.length ? submission.insuranceServices.join(', ') : (submission.insuranceService || 'N/A')}</p>
         <p><span className="font-semibold">Submitted By:</span> {submission.uploadedBy?.fullName || 'N/A'}</p>
         <p><span className="font-semibold">Files:</span> {submission.filesCount || submission.files?.length || 0}</p>
+        {submission.selectedInsuranceSelections && submission.selectedInsuranceSelections.length > 0 && (
+          <div className="md:col-span-2">
+            <p className="font-semibold mb-1">Selected Insurance Rows:</p>
+            <div className="flex flex-wrap gap-2">
+              {submission.selectedInsuranceSelections.map((item, index) => (
+                <span key={`${item.clientId || 'client'}-${item.insurance || 'insurance'}-${index}`} className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200">
+                  {(item.clientName || 'Unknown Client')} - {(item.insurance || 'Unknown Insurance')}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="bg-white border border-gray-200 rounded-lg p-4">
@@ -290,6 +323,36 @@ export default function DocumentSubmissionDetail() {
           <div className="space-y-4">
             {Object.entries(submission.onboardingData).map(([key, value]) => {
               const isObject = value && typeof value === 'object' && !Array.isArray(value);
+              const isArray = Array.isArray(value);
+
+              if (isArray) {
+                const list = value as any[];
+                const isObjectArray = list.some((item) => item && typeof item === 'object');
+
+                return (
+                  <div key={key} className="border border-gray-200 rounded-lg p-3">
+                    <p className="text-sm font-semibold text-gray-900 mb-2">{formatLabel(key)}</p>
+                    {list.length === 0 ? (
+                      <p className="text-sm text-gray-700">No values</p>
+                    ) : isObjectArray ? (
+                      <div className="space-y-1 text-sm text-gray-700">
+                        {list.map((item, index) => (
+                          <p key={`${key}-${index}`}>
+                            {typeof item === 'object'
+                              ? Object.entries(item as Record<string, any>)
+                                  .map(([itemKey, itemValue]) => `${formatLabel(itemKey)}: ${String(itemValue ?? '')}`)
+                                  .join(' | ')
+                              : String(item)}
+                          </p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-700">{list.map((item) => String(item)).join(', ')}</p>
+                    )}
+                  </div>
+                );
+              }
+
               return (
                 <div key={key} className="border border-gray-200 rounded-lg p-3">
                   <p className="text-sm font-semibold text-gray-900 mb-2">{formatLabel(key)}</p>

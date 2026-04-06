@@ -4,7 +4,6 @@ import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../../services/authService';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
-import { FiEye, FiEyeOff } from 'react-icons/fi';
 
 export default function Register() {
   const navigate = useNavigate();
@@ -16,8 +15,6 @@ export default function Register() {
     password: '',
     confirmPassword: '',
   });
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,29 +109,21 @@ export default function Register() {
               <label htmlFor="password" className="label">
                 Password
               </label>
-              <div className="relative">
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  minLength={6}
-                  className="input pr-10"
-                  placeholder="••••••••"
-                  value={formData.password}
-                  onChange={handleChange}
-                  disabled={loading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((s) => !s)}
-                  className="absolute inset-y-0 right-2 flex items-center text-gray-500"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? <FiEyeOff className="h-5 w-5" /> : <FiEye className="h-5 w-5" />}
-                </button>
-              </div>
-              <p className="mt-1 text-xs text-gray-500">Must be at least 6 characters</p>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                required
+                minLength={6}
+                className="input"
+                placeholder="••••••••"
+                value={formData.password}
+                onChange={handleChange}
+                disabled={loading}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Must be at least 6 characters
+              </p>
             </div>
 
             {/* Confirm Password */}
@@ -142,27 +131,17 @@ export default function Register() {
               <label htmlFor="confirmPassword" className="label">
                 Confirm Password
               </label>
-              <div className="relative">
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  required
-                  className="input pr-10"
-                  placeholder="••••••••"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  disabled={loading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword((s) => !s)}
-                  className="absolute inset-y-0 right-2 flex items-center text-gray-500"
-                  aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showConfirmPassword ? <FiEyeOff className="h-5 w-5" /> : <FiEye className="h-5 w-5" />}
-                </button>
-              </div>
+              <input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                required
+                className="input"
+                placeholder="••••••••"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                disabled={loading}
+              />
             </div>
 
             {/* Submit Button */}

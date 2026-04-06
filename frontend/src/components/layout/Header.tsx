@@ -19,6 +19,9 @@ export default function Header() {
   const settingsPath = isAdmin ? '/admin/enrollments' : '/workspace';
   const profileLabel = isAdmin ? 'Admin Dashboard' : 'User Dashboard';
   const settingsLabel = isAdmin ? 'Admin Routes' : 'Workspace';
+  const userInitial = user?.fullName?.trim()?.charAt(0)?.toUpperCase() || 'U';
+  const userDisplayName = user?.fullName || 'User';
+  const userRoleLabel = user?.role?.replace('_', ' ') || 'member';
 
   const handleLogout = () => {
     const logoutPath = user?.role === 'admin' ? '/admin/login' : '/login';
@@ -164,12 +167,12 @@ export default function Header() {
           >
             <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center">
               <span className="text-white text-sm font-medium">
-                {user?.fullName?.charAt(0).toUpperCase()}
+                {userInitial}
               </span>
             </div>
             <div className="hidden md:block text-left">
-              <p className="text-sm font-medium text-gray-900">{user?.fullName}</p>
-              <p className="text-xs text-gray-500 capitalize">{user?.role?.replace('_', ' ')}</p>
+              <p className="text-sm font-medium text-gray-900">{userDisplayName}</p>
+              <p className="text-xs text-gray-500 capitalize">{userRoleLabel}</p>
             </div>
             <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
