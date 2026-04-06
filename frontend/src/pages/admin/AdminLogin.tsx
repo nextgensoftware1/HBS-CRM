@@ -1,0 +1,141 @@
+import { useMemo, useState } from 'react';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import { FiShield } from 'react-icons/fi';
+import { FiEye, FiEyeOff } from 'react-icons/fi';
+import { authService } from '../../services/authService';
+import { useAuthStore } from '../../store/authStore';
+
+export default function AdminLogin() {
+  const navigate = useNavigate();
+  const { isAuthenticated, user, setAuth } = useAuthStore();
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+  });
+  const [showPassword, setShowPassword] = useState(false);
+
+  const isAdmin = useMemo(() => user?.role === 'admin', [user]);
+
+  if (isAuthenticated && isAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  if (isAuthenticated && !isAdmin) {
+    return <Navigate to="/workspace" replace />;
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const response = await authService.login(formData.email, formData.password);
+      const loggedInUser = response.data.user;
+
+      if (loggedInUser.role !== 'admin') {
+        toast.error('This account does not have admin access.');
+        return;
+      }
+
+      setAuth(loggedInUser, response.data.token);
+      toast.success('Admin login successful!');
+      navigate('/dashboard');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Admin login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({
+      ...prev,
+      [e.target.name]: e.target.value,
+    }));
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 flex items-center justify-center p-4">
+      <div className="max-w-md w-full">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-full mb-4">
+            <FiShield className="w-9 h-9 text-slate-800" />
+          </div>
+          <h1 className="text-3xl font-bold text-white mb-2">Healthcare CRM</h1>
+          <p className="text-slate-200">Administrator Access</p>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-2xl p-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Admin sign in</h2>
+          <p className="text-sm text-gray-500 mb-6">Use an administrator account to continue.</p>
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label htmlFor="email" className="label">
+                Admin email
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                required
+                className="input"
+                placeholder="admin@company.com"
+                value={formData.email}
+                onChange={handleChange}
+                disabled={loading}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="password" className="label">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  className="input pr-10"
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={handleChange}
+                  disabled={loading}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  className="absolute inset-y-0 right-2 flex items-center text-gray-500"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <FiEyeOff className="h-5 w-5" /> : <FiEye className="h-5 w-5" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full btn bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center"
+            >
+              {loading ? 'Signing in...' : 'Sign in as Admin'}
+            </button>
+          </form>
+
+          <div className="mt-6 text-center text-sm text-gray-600">
+            <p>
+              Need standard user login?{' '}
+              <Link to="/login" className="font-medium text-primary-600 hover:text-primary-500">
+                Go to user sign in
+              </Link>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

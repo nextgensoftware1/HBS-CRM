@@ -1,0 +1,8 @@
+{
+  "css.lint.unknownAtRules": "ignore",
+  "css.lint.compatibleVendorPrefixes": "ignore",
+  "css.validate": true,
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
+}
