@@ -47,25 +47,25 @@ export default function Modal({
 	}
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+		<div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
 			<div className="absolute inset-0 bg-black/40" onClick={onClose} />
-			<div className={`relative w-full ${maxWidthClass} max-h-[92vh] rounded-xl bg-white shadow-xl border border-gray-200 flex flex-col`}>
+			<div className={`relative w-[calc(100vw-1rem)] sm:w-full ${maxWidthClass} max-h-[92dvh] sm:max-h-[92vh] rounded-xl bg-white shadow-xl border border-gray-200 flex flex-col overflow-hidden`}>
 				<button
 					type="button"
 					onClick={onClose}
 					disabled={isLoading}
-					className="absolute right-3 top-3 rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-60"
+					className="absolute right-2.5 top-2.5 sm:right-3 sm:top-3 rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-60"
 					aria-label="Close modal"
 				>
 					<FiX className="h-5 w-5" />
 				</button>
 
-				<div className="px-5 pt-5 pb-3 border-b border-gray-100">
+				<div className="px-4 sm:px-5 pt-4 sm:pt-5 pb-3 border-b border-gray-100">
 					<h3 className="text-lg font-semibold text-gray-900">{title}</h3>
 					{message && <p className="mt-1 text-sm text-gray-600">{message}</p>}
 				</div>
 
-				<div className="px-5 py-4 space-y-4 overflow-y-auto">
+				<div className="px-4 sm:px-5 py-4 space-y-4 overflow-y-auto overflow-x-hidden">
 					{children}
 
 					{(requireNote || note.length > 0) && (
@@ -82,12 +82,12 @@ export default function Modal({
 					)}
 				</div>
 
-				<div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2 bg-white">
+				<div className="px-4 sm:px-5 py-3 border-t border-gray-100 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 bg-white">
 					<button
 						type="button"
 						onClick={onClose}
 						disabled={isLoading}
-						className="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700"
+						className="w-full sm:w-auto px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700"
 					>
 						{cancelLabel}
 					</button>
@@ -95,7 +95,7 @@ export default function Modal({
 						type="button"
 						onClick={() => onConfirm(note.trim() || undefined)}
 						disabled={isLoading || (requireNote && note.trim().length === 0)}
-						className="px-3 py-2 rounded-lg bg-primary-600 text-sm text-white disabled:opacity-60"
+						className="w-full sm:w-auto px-3 py-2 rounded-lg bg-primary-600 text-sm text-white disabled:opacity-60"
 					>
 						{isLoading ? 'Saving...' : confirmLabel}
 					</button>

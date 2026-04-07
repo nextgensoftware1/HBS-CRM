@@ -39,53 +39,96 @@ const userNavigation = [
   { name: 'Reminders', href: '/reminders', icon: FiBell },
 ];
 
-export default function Sidebar() {
+type SidebarProps = {
+  isOpen: boolean;
+  onClose: () => void;
+};
+
+export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role === 'admin';
+  const userDisplayName = user?.fullName || 'User';
+  const userRoleLabel = user?.role?.replace('_', ' ') || 'member';
 
-  const navItems = isAdmin ? [...navigation, ...adminNavigation] : userNavigation;
+  const primaryItems = isAdmin ? navigation : userNavigation;
+  const secondaryItems = isAdmin ? adminNavigation : [];
+
+  const renderNavItems = (items: Array<{ name: string; href: string; icon: any }>) => (
+    items.map((item) => (
+      <NavLink
+        key={item.name}
+        to={item.href}
+        onClick={onClose}
+        className={({ isActive }) =>
+          `group flex items-center px-3 py-2.5 text-sm font-medium rounded-xl transition-all duration-150 border ${
+            isActive
+              ? 'bg-primary-50 text-primary-700 border-primary-100 shadow-sm'
+              : 'text-gray-700 border-transparent hover:bg-gray-50 hover:text-gray-900'
+          }`
+        }
+      >
+        <item.icon className="mr-3 h-5 w-5 shrink-0" />
+        <span className="truncate">{item.name}</span>
+      </NavLink>
+    ))
+  );
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
-      {/* Logo */}
-      <div className="h-16 flex items-center px-6 border-b border-gray-200">
-        <div className="flex items-center">
-          <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
+    <>
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/30 z-40 lg:hidden"
+          onClick={onClose}
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-gradient-to-b from-white to-slate-50 border-r border-slate-200 flex flex-col transform transition-transform duration-200 ease-out lg:static lg:z-auto lg:w-[17rem] lg:max-w-none lg:translate-x-0 lg:shadow-[0_1px_0_rgba(255,255,255,.8)_inset] ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* Logo */}
+        <div className="h-16 flex items-center px-6 border-b border-slate-200/80">
+          <div className="flex items-center min-w-0">
+            <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center shrink-0 shadow-sm shadow-primary-300/40">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <span className="ml-3 text-lg font-semibold text-slate-900 truncate tracking-tight">Healthcare CRM</span>
           </div>
-          <span className="ml-3 text-lg font-semibold text-gray-900">Healthcare CRM</span>
         </div>
-      </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.name}
-            to={item.href}
-            className={({ isActive }) =>
-              `flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
-                isActive
-                  ? 'bg-primary-50 text-primary-700'
-                  : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-              }`
-            }
-          >
-            <item.icon className="mr-3 h-5 w-5" />
-            {item.name}
-          </NavLink>
-        ))}
-      </nav>
+        {/* Navigation */}
+        <nav className="flex-1 px-4 py-6 overflow-y-auto">
+          <p className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-widest text-gray-400">Main Menu</p>
+          <div className="space-y-1">
+            {renderNavItems(primaryItems)}
+          </div>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-gray-200">
-        <div className="text-xs text-gray-500 text-center">
-          <p>Healthcare CRM v1.0</p>
-          <p className="mt-1">&copy; 2024 All rights reserved</p>
+          {secondaryItems.length > 0 && (
+            <>
+              <div className="my-4 border-t border-slate-200/80" />
+              <p className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-widest text-gray-400">Administration</p>
+              <div className="space-y-1">
+                {renderNavItems(secondaryItems)}
+              </div>
+            </>
+          )}
+        </nav>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-slate-200/80 bg-white/60 backdrop-blur-sm">
+          <div className="mb-3 px-2">
+            <p className="text-sm font-semibold text-gray-800 truncate">{userDisplayName}</p>
+            <p className="text-xs text-gray-500 capitalize">{userRoleLabel}</p>
+          </div>
+          <div className="text-xs text-gray-500 text-center">
+            <p>Healthcare CRM v1.0</p>
+            <p className="mt-1">&copy; 2024 All rights reserved</p>
+          </div>
         </div>
-      </div>
-    </div>
+      </aside>
+    </>
   );
 }

@@ -262,10 +262,10 @@ export default function ProviderDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-white via-slate-50 to-white p-5 shadow-sm">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+      <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-white via-slate-50 to-white p-4 sm:p-5 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 break-words leading-tight">
               {isEditing ? `${editForm.firstName} ${editForm.lastName}`.trim() || 'Provider' : `${provider.firstName} ${provider.lastName}`}
             </h1>
             <p className="text-sm text-slate-600 mt-1">Provider profile synced from backend records.</p>
@@ -275,7 +275,7 @@ export default function ProviderDetail() {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="w-full sm:w-auto flex flex-wrap items-center gap-2 sm:justify-end">
             {canEdit && !isEditing && (
               <button
                 type="button"
@@ -283,7 +283,7 @@ export default function ProviderDetail() {
                   fillEditForm(provider, insuranceServiceNames);
                   setIsEditing(true);
                 }}
-                className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                className="text-sm px-3 py-1.5 rounded-xl border border-slate-300 text-slate-700 bg-white shadow-sm hover:bg-slate-50"
               >
                 Edit Provider
               </button>
@@ -293,7 +293,7 @@ export default function ProviderDetail() {
                 <button
                   type="button"
                   onClick={handleCancelEdit}
-                  className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  className="text-sm px-3 py-1.5 rounded-xl border border-slate-300 text-slate-700 bg-white shadow-sm hover:bg-slate-50"
                 >
                   Cancel
                 </button>
@@ -301,19 +301,19 @@ export default function ProviderDetail() {
                   type="button"
                   onClick={handleSaveProvider}
                   disabled={saving}
-                  className="text-sm px-3 py-1.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-60"
+                  className="text-sm px-3 py-1.5 rounded-xl bg-primary-600 text-white shadow-sm shadow-primary-300/40 hover:bg-primary-700 disabled:opacity-60"
                 >
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
               </>
             )}
-            <Link to="/providers" className="text-sm text-primary-600 hover:text-primary-700">Back to list</Link>
+            <Link to="/providers" className="text-sm px-3 py-1.5 rounded-xl border border-primary-200 text-primary-700 bg-white shadow-sm hover:bg-primary-50">Back to list</Link>
           </div>
         </div>
       </div>
 
-      {saveMessage && <p className="text-sm text-emerald-600">{saveMessage}</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {saveMessage && <p className="text-sm text-emerald-700 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">{saveMessage}</p>}
+      {error && <p className="text-sm text-red-700 rounded-xl border border-red-200 bg-red-50 px-3 py-2">{error}</p>}
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
         <section className="xl:col-span-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -510,7 +510,7 @@ export default function ProviderDetail() {
           {isEditing && canEdit ? (
             <div className="space-y-3">
               {editForm.insuranceServicesList.map((insurance, index) => (
-                <div key={`insurance-${index}`} className="flex gap-2">
+                <div key={`insurance-${index}`} className="flex flex-col sm:flex-row gap-2">
                   <input
                     value={insurance}
                     onChange={(e) => {
@@ -519,7 +519,7 @@ export default function ProviderDetail() {
                       setEditForm((prev) => ({ ...prev, insuranceServicesList: nextList }));
                     }}
                     placeholder={`Insurance ${index + 1}`}
-                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
                   />
                   <button
                     type="button"
@@ -533,7 +533,7 @@ export default function ProviderDetail() {
                         insuranceServicesList: prev.insuranceServicesList.filter((_, i) => i !== index),
                       }));
                     }}
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white hover:bg-slate-50 sm:w-auto w-full"
                   >
                     Remove
                   </button>
@@ -542,7 +542,7 @@ export default function ProviderDetail() {
               <button
                 type="button"
                 onClick={() => setEditForm((prev) => ({ ...prev, insuranceServicesList: [...prev.insuranceServicesList, ''] }))}
-                className="rounded-lg border border-primary-300 px-3 py-2 text-sm text-primary-700 hover:bg-primary-50"
+                className="rounded-xl border border-primary-300 px-3 py-2 text-sm text-primary-700 bg-white hover:bg-primary-50"
               >
                 Add More Insurance
               </button>
@@ -571,7 +571,7 @@ export default function ProviderDetail() {
             <textarea
               value={editForm.notes}
               onChange={(e) => setEditForm((prev) => ({ ...prev, notes: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
               rows={4}
               placeholder="Provider notes"
             />
@@ -605,18 +605,18 @@ function LoginRow({
 }: LoginRowProps) {
   if (isEditing) {
     return (
-      <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+      <div className="rounded-xl border border-slate-200 p-3 space-y-2 bg-slate-50/50">
         <p className="text-xs uppercase tracking-wide text-slate-500">{system}</p>
         <input
           value={editUsername || ''}
           onChange={(e) => onUsernameChange?.(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
           placeholder={`${system} username`}
         />
         <input
           value={editPassword || ''}
           onChange={(e) => onPasswordChange?.(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
           placeholder={`${system} password`}
         />
       </div>
@@ -626,8 +626,8 @@ function LoginRow({
   return (
     <div className="rounded-lg border border-slate-200 p-3">
       <p className="text-xs uppercase tracking-wide text-slate-500">{system}</p>
-      <p className="text-sm font-medium text-slate-900 mt-1">{username || 'Not Added'}</p>
-      <p className="text-sm text-slate-700 mt-1">{redact(password)}</p>
+      <p className="text-sm font-medium text-slate-900 mt-1 break-words">{username || 'Not Added'}</p>
+      <p className="text-sm text-slate-700 mt-1 break-words">{redact(password)}</p>
     </div>
   );
 }
@@ -662,7 +662,7 @@ function EditableRow({
           type={inputType}
           value={inputValue}
           onChange={(e) => onChange(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm"
+          className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm"
         />
       ) : (
         <p className="text-sm font-medium text-slate-900 mt-1 break-words">{hasValue(value) ? value : 'Not Added'}</p>
