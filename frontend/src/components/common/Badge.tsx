@@ -16,11 +16,7 @@ export default function Badge({ children, variant = 'gray', className = '' }: Ba
     gray: 'badge-gray',
   };
 
-  return (
-    <span className={`badge ${variantClasses[variant]} ${className}`}>
-      {children}
-    </span>
-  );
+  return <span className={`badge ${variantClasses[variant]} ${className}`}>{children}</span>;
 }
 
 // Status badge helper

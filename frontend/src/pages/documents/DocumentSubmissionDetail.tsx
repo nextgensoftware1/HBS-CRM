@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { FiCheck, FiChevronDown, FiChevronUp, FiClock, FiEye, FiFileText, FiRotateCcw, FiUser, FiX } from 'react-icons/fi';
 import { documentService } from '../../services/documentService';
 import { useAuthStore } from '../../store/authStore';
 
@@ -46,25 +47,23 @@ export default function DocumentSubmissionDetail() {
   const [submission, setSubmission] = useState<SubmissionDetail | null>(null);
   const [actionLoadingFileId, setActionLoadingFileId] = useState<string | null>(null);
   const [selectedReuploadFiles, setSelectedReuploadFiles] = useState<Record<string, File | null>>({});
+  const [isFormExpanded, setIsFormExpanded] = useState(false);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const providerName = useMemo(() => {
-    if (!submission?.provider) return 'N/A';
-    return `${submission.provider.firstName || ''} ${submission.provider.lastName || ''}`.trim() || 'N/A';
-  }, [submission]);
-
-  const providerNames = useMemo(() => {
-    const list = submission?.providers || [];
-    if (!list.length) {
-      return providerName;
+  const statusBadgeClass = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+      case 'rejected':
+        return 'bg-rose-100 text-rose-700 border-rose-200';
+      case 'under_review':
+        return 'bg-amber-100 text-amber-700 border-amber-200';
+      case 'submitted':
+        return 'bg-indigo-100 text-indigo-700 border-indigo-200';
+      default:
+        return 'bg-blue-100 text-blue-700 border-blue-200';
     }
-
-    const names = list
-      .map((provider) => `${provider.firstName || ''} ${provider.lastName || ''}`.trim())
-      .filter(Boolean);
-
-    return names.length ? names.join(', ') : providerName;
-  }, [submission, providerName]);
+  };
 
   const loadSubmission = async (showPageLoader = false) => {
     if (!id) {
@@ -108,7 +107,13 @@ export default function DocumentSubmissionDetail() {
   const approveFile = async (fileId: string) => {
     try {
       setActionLoadingFileId(fileId);
-      await documentService.updateStatus(fileId, 'approved', undefined, 'Approved from submission detail page');
+      await documentService.updateStatus(
+        fileId,
+        'approved',
+        undefined,
+        'Approved from submission detail page',
+        false
+      );
       await loadSubmission(false);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to approve document');
@@ -125,7 +130,13 @@ export default function DocumentSubmissionDetail() {
 
     try {
       setActionLoadingFileId(fileId);
-      await documentService.updateStatus(fileId, 'rejected', reason.trim(), reason.trim());
+      await documentService.updateStatus(
+        fileId,
+        'rejected',
+        reason.trim(),
+        reason.trim(),
+        false
+      );
       await loadSubmission(false);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to reject document');
@@ -198,31 +209,43 @@ export default function DocumentSubmissionDetail() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-start justify-between gap-3">
+    <div className="space-y-5 w-full">
+      <div className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur p-4 sm:p-5 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Insurance Intake Submission</h1>
-          <p className="text-sm text-gray-600">Full onboarding form and uploaded files submitted by user.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Insurance Intake Submission</h1>
+          <p className="text-sm text-slate-600">Full onboarding form and uploaded files submitted by user.</p>
         </div>
-        <Link to="/documents" className="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">Back</Link>
+        <Link to="/documents" className="self-start px-3 py-2 rounded-xl border border-slate-300 text-sm text-slate-700 hover:bg-slate-50">Back</Link>
+        </div>
       </div>
 
-      {success && <p className="text-sm text-emerald-700">{success}</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {success && <p className="text-sm text-emerald-700 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">{success}</p>}
+      {error && <p className="text-sm text-red-600 rounded-lg border border-red-200 bg-red-50 px-3 py-2">{error}</p>}
 
-      <section className="bg-white border border-gray-200 rounded-lg p-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-        <p><span className="font-semibold">Providers:</span> {providerNames}</p>
-        <p><span className="font-semibold">Provider NPI:</span> {submission.provider?.npi || 'N/A'}</p>
-        <p><span className="font-semibold">Clients:</span> {submission.clients?.length ? submission.clients.join(', ') : (submission.clientName || 'N/A')}</p>
-        <p><span className="font-semibold">Insurance:</span> {submission.insuranceServices?.length ? submission.insuranceServices.join(', ') : (submission.insuranceService || 'N/A')}</p>
-        <p><span className="font-semibold">Submitted By:</span> {submission.uploadedBy?.fullName || 'N/A'}</p>
-        <p><span className="font-semibold">Files:</span> {submission.filesCount || submission.files?.length || 0}</p>
+      <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Submitted By</p>
+          <p className="mt-1 font-semibold text-slate-900 break-words">{submission.uploadedBy?.fullName || 'N/A'}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Provider NPI</p>
+          <p className="mt-1 font-semibold text-slate-900 break-words">{submission.provider?.npi || 'N/A'}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Clients</p>
+          <p className="mt-1 font-semibold text-slate-900 break-words">{submission.clients?.length ? submission.clients.join(', ') : (submission.clientName || 'N/A')}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Files</p>
+          <p className="mt-1 font-semibold text-slate-900">{submission.filesCount || submission.files?.length || 0}</p>
+        </div>
         {submission.selectedInsuranceSelections && submission.selectedInsuranceSelections.length > 0 && (
-          <div className="md:col-span-2">
-            <p className="font-semibold mb-1">Selected Insurance Rows:</p>
+          <div className="md:col-span-2 xl:col-span-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <p className="font-semibold text-slate-900 mb-2">Selected Insurance Rows</p>
             <div className="flex flex-wrap gap-2">
               {submission.selectedInsuranceSelections.map((item, index) => (
-                <span key={`${item.clientId || 'client'}-${item.insurance || 'insurance'}-${index}`} className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200">
+                <span key={`${item.clientId || 'client'}-${item.insurance || 'insurance'}-${index}`} className="inline-flex max-w-full items-center px-2 py-1 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200 whitespace-normal break-words">
                   {(item.clientName || 'Unknown Client')} - {(item.insurance || 'Unknown Insurance')}
                 </span>
               ))}
@@ -231,32 +254,37 @@ export default function DocumentSubmissionDetail() {
         )}
       </section>
 
-      <section className="bg-white border border-gray-200 rounded-lg p-4">
-        <h2 className="font-semibold text-gray-900 mb-3">Uploaded Files</h2>
-        <div className="space-y-2">
+      <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-slate-900 flex items-center gap-2"><FiFileText className="h-4 w-4 text-slate-600" /> Uploaded Files</h2>
+          <span className="text-xs font-medium text-slate-500">{submission.files?.length || 0} files</span>
+        </div>
+        <div className="space-y-3">
           {submission.files?.map((file) => (
-            <div key={file._id} className="flex flex-wrap items-center justify-between gap-2 border border-gray-200 rounded-lg p-3">
-              <div>
-                <p className="font-medium text-gray-900">{file.fileName}</p>
-                <p className="text-xs text-gray-600">{file.documentType} • {new Date(file.createdAt).toLocaleString()}</p>
-                <span className="inline-flex mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{file.status}</span>
+            <div key={file._id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-slate-200 rounded-xl p-3 hover:bg-slate-50/70 transition-colors">
+              <div className="min-w-0">
+                <p className="font-medium text-slate-900 break-all">{file.fileName}</p>
+                <p className="text-xs text-slate-600 break-words flex items-center gap-1.5"><FiClock className="h-3.5 w-3.5" /> {file.documentType} | {new Date(file.createdAt).toLocaleString()}</p>
+                <span className={`inline-flex mt-1 px-2 py-0.5 rounded-full border text-xs font-medium ${statusBadgeClass(file.status)}`}>{file.status}</span>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex w-full sm:w-auto flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => openFile(file._id)}
-                  className="px-3 py-1.5 text-xs rounded bg-slate-100 text-slate-700"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
                   disabled={actionLoadingFileId === file._id}
                 >
+                  <FiEye className="h-3.5 w-3.5" />
                   Open
                 </button>
                 {isAdmin && file.status !== 'approved' && (
                   <button
                     type="button"
                     onClick={() => approveFile(file._id)}
-                    className="px-3 py-1.5 text-xs rounded bg-emerald-100 text-emerald-700"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
                     disabled={actionLoadingFileId === file._id}
                   >
+                    <FiCheck className="h-3.5 w-3.5" />
                     Approve
                   </button>
                 )}
@@ -264,9 +292,10 @@ export default function DocumentSubmissionDetail() {
                   <button
                     type="button"
                     onClick={() => rejectFile(file._id)}
-                    className="px-3 py-1.5 text-xs rounded bg-rose-100 text-rose-700"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-rose-100 text-rose-700 hover:bg-rose-200"
                     disabled={actionLoadingFileId === file._id}
                   >
+                    <FiX className="h-3.5 w-3.5" />
                     Reject
                   </button>
                 )}
@@ -284,14 +313,15 @@ export default function DocumentSubmissionDetail() {
                     <button
                       type="button"
                       onClick={() => triggerReUploadPicker(file._id)}
-                      className="px-3 py-1.5 text-xs rounded bg-amber-100 text-amber-700"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200"
                       disabled={actionLoadingFileId === file._id}
                     >
+                      <FiRotateCcw className="h-3.5 w-3.5" />
                       Re-upload
                     </button>
                     {selectedReuploadFiles[file._id] && (
                       <>
-                        <span className="text-xs text-gray-600 max-w-[180px] truncate">
+                        <span className="text-xs text-gray-600 max-w-full sm:max-w-[220px] break-all">
                           {selectedReuploadFiles[file._id]?.name}
                         </span>
                         <span className="text-xs text-amber-700">
@@ -315,13 +345,30 @@ export default function DocumentSubmissionDetail() {
         </div>
       </section>
 
-      <section className="bg-white border border-gray-200 rounded-lg p-4">
-        <h2 className="font-semibold text-gray-900 mb-3">Submitted Form Fields</h2>
-        {!submission.onboardingData ? (
-          <p className="text-sm text-gray-600">No onboarding form fields found for this submission.</p>
+      <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setIsFormExpanded((prev) => !prev)}
+          className="w-full flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2 hover:bg-slate-50"
+        >
+          <span className="font-semibold text-slate-900 flex items-center gap-2"><FiUser className="h-4 w-4 text-slate-600" /> Submitted Form Fields</span>
+          <span className="inline-flex items-center gap-2 text-xs text-slate-600">
+            {Object.keys(submission.onboardingData || {}).filter((key) => key !== 'selectedInsuranceSelections').length} fields
+            {isFormExpanded ? <FiChevronUp className="h-4 w-4" /> : <FiChevronDown className="h-4 w-4" />}
+          </span>
+        </button>
+
+        {!isFormExpanded ? (
+          <p className="text-sm text-slate-500 mt-3">Expand to view full submitted form details.</p>
+        ) : !submission.onboardingData ? (
+          <p className="text-sm text-gray-600 mt-3">No onboarding form fields found for this submission.</p>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3 mt-3">
             {Object.entries(submission.onboardingData).map(([key, value]) => {
+              if (key === 'selectedInsuranceSelections') {
+                return null;
+              }
+
               const isObject = value && typeof value === 'object' && !Array.isArray(value);
               const isArray = Array.isArray(value);
 
@@ -330,14 +377,17 @@ export default function DocumentSubmissionDetail() {
                 const isObjectArray = list.some((item) => item && typeof item === 'object');
 
                 return (
-                  <div key={key} className="border border-gray-200 rounded-lg p-3">
-                    <p className="text-sm font-semibold text-gray-900 mb-2">{formatLabel(key)}</p>
+                  <details key={key} className="border border-slate-200 rounded-xl p-3 group">
+                    <summary className="text-sm font-semibold text-slate-900 mb-2 cursor-pointer list-none flex items-center justify-between">
+                      <span>{formatLabel(key)}</span>
+                      <FiChevronDown className="h-4 w-4 text-slate-500 group-open:rotate-180 transition-transform" />
+                    </summary>
                     {list.length === 0 ? (
                       <p className="text-sm text-gray-700">No values</p>
                     ) : isObjectArray ? (
                       <div className="space-y-1 text-sm text-gray-700">
                         {list.map((item, index) => (
-                          <p key={`${key}-${index}`}>
+                          <p key={`${key}-${index}`} className="break-words">
                             {typeof item === 'object'
                               ? Object.entries(item as Record<string, any>)
                                   .map(([itemKey, itemValue]) => `${formatLabel(itemKey)}: ${String(itemValue ?? '')}`)
@@ -347,25 +397,28 @@ export default function DocumentSubmissionDetail() {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-gray-700">{list.map((item) => String(item)).join(', ')}</p>
+                      <p className="text-sm text-gray-700 break-words">{list.map((item) => String(item)).join(', ')}</p>
                     )}
-                  </div>
+                  </details>
                 );
               }
 
               return (
-                <div key={key} className="border border-gray-200 rounded-lg p-3">
-                  <p className="text-sm font-semibold text-gray-900 mb-2">{formatLabel(key)}</p>
+                <details key={key} className="border border-slate-200 rounded-xl p-3 group">
+                  <summary className="text-sm font-semibold text-slate-900 mb-2 cursor-pointer list-none flex items-center justify-between">
+                    <span>{formatLabel(key)}</span>
+                    <FiChevronDown className="h-4 w-4 text-slate-500 group-open:rotate-180 transition-transform" />
+                  </summary>
                   {isObject ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                       {Object.entries(value as Record<string, any>).map(([subKey, subValue]) => (
-                        <p key={subKey}><span className="font-medium">{formatLabel(subKey)}:</span> {String(subValue ?? '')}</p>
+                        <p key={subKey} className="break-words"><span className="font-medium">{formatLabel(subKey)}:</span> {String(subValue ?? '')}</p>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-700">{String(value ?? '')}</p>
+                    <p className="text-sm text-gray-700 break-words">{String(value ?? '')}</p>
                   )}
-                </div>
+                </details>
               );
             })}
           </div>

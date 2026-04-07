@@ -889,7 +889,7 @@ exports.uploadDocument = async (req, res) => {
 // @access  Private
 exports.updateDocumentStatus = async (req, res) => {
   try {
-    const { status, rejectionReason, adminNote } = req.body;
+    const { status, rejectionReason, adminNote, applyToSubmission = true } = req.body;
     
     const document = await Document.findById(req.params.id);
     
@@ -900,9 +900,14 @@ exports.updateDocumentStatus = async (req, res) => {
       });
     }
     
-    const submissionQuery = getSubmissionQuery(document);
-    const targetDocuments = await Document.find(submissionQuery).sort({ createdAt: -1 });
-    const docsToUpdate = targetDocuments.length ? targetDocuments : [document];
+    const shouldApplyToSubmission = applyToSubmission !== false;
+    let docsToUpdate = [document];
+
+    if (shouldApplyToSubmission) {
+      const submissionQuery = getSubmissionQuery(document);
+      const targetDocuments = await Document.find(submissionQuery).sort({ createdAt: -1 });
+      docsToUpdate = targetDocuments.length ? targetDocuments : [document];
+    }
 
     const nowIso = new Date().toISOString();
     for (const docItem of docsToUpdate) {

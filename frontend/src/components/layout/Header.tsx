@@ -2,10 +2,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
-import { FiBell, FiUser, FiLogOut, FiSettings } from 'react-icons/fi';
+import { FiBell, FiUser, FiLogOut, FiSettings, FiMenu } from 'react-icons/fi';
 import { notificationService, type AppNotification } from '../../services/notificationService';
 
-export default function Header() {
+type HeaderProps = {
+  onMenuToggle: () => void;
+};
+
+export default function Header({ onMenuToggle }: HeaderProps) {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -73,6 +77,34 @@ export default function Header() {
     }
   };
 
+  const getNotificationTargetPath = (item: AppNotification) => {
+    const entityType = String(item.entityType || '').toLowerCase();
+    const type = String(item.type || '').toLowerCase();
+    const entityId = item.entityId || '';
+
+    if (entityType === 'document') {
+      if (!entityId) return '/documents';
+
+      if (type === 'document_deleted') {
+        return '/documents';
+      }
+
+      return `/documents/${entityId}/submission`;
+    }
+
+    return '/documents';
+  };
+
+  const handleNotificationClick = async (item: AppNotification) => {
+    if (!item.isRead) {
+      await markOneAsRead(item._id);
+    }
+
+    setShowNotificationMenu(false);
+    setShowUserMenu(false);
+    navigate(getNotificationTargetPath(item));
+  };
+
   const markAllAsRead = async () => {
     try {
       await notificationService.markAllAsRead();
@@ -90,14 +122,23 @@ export default function Header() {
   }, []);
 
   return (
-    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6">
+    <header className="relative z-40 h-16 bg-white/90 backdrop-blur border-b border-slate-200 flex items-center justify-between px-3 sm:px-6 gap-3 shadow-[0_1px_0_0_rgba(148,163,184,.15)]">
       {/* Search Bar */}
-      <div className="flex-1 max-w-2xl">
-        <div className="relative">
+      <div className="flex flex-1 items-center gap-2 min-w-0">
+        <button
+          type="button"
+          onClick={onMenuToggle}
+          className="lg:hidden inline-flex items-center justify-center p-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100"
+          aria-label="Open menu"
+        >
+          <FiMenu className="h-5 w-5" />
+        </button>
+
+        <div className="relative flex-1 min-w-0">
           <input
             type="text"
             placeholder="Search..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full min-w-0 pl-10 pr-4 py-2 border border-slate-300 rounded-xl bg-white/90 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           />
           <div className="absolute left-3 top-2.5">
             <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -108,11 +149,11 @@ export default function Header() {
       </div>
 
       {/* Right Section */}
-      <div className="flex items-center space-x-4 ml-6">
+  <div className="flex items-center space-x-1 sm:space-x-4 ml-1 sm:ml-6">
         {/* Notifications */}
         <button
           onClick={openNotifications}
-          className="relative p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          className="relative p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
         >
           <FiBell className="h-6 w-6" />
           {unreadCount > 0 && (
@@ -122,8 +163,8 @@ export default function Header() {
 
         {showNotificationMenu && (
           <>
-            <div className="fixed inset-0 z-10" onClick={() => setShowNotificationMenu(false)} />
-            <div className="absolute right-20 top-14 w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-20 overflow-hidden">
+            <div className="fixed inset-0 z-[70]" onClick={() => setShowNotificationMenu(false)} />
+            <div className="fixed right-2 sm:right-6 top-[4.25rem] w-[calc(100vw-1rem)] max-w-sm sm:w-96 bg-white rounded-xl shadow-xl border border-slate-200 z-[80] overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                 <p className="text-sm font-semibold text-gray-900">Notifications</p>
                 <button
@@ -143,7 +184,7 @@ export default function Header() {
                   <button
                     key={item._id}
                     type="button"
-                    onClick={() => markOneAsRead(item._id)}
+                    onClick={() => handleNotificationClick(item)}
                     className={`w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 ${item.isRead ? 'bg-white' : 'bg-blue-50/40'}`}
                   >
                     <p className="text-sm font-medium text-gray-900">{item.title}</p>
@@ -163,9 +204,9 @@ export default function Header() {
               setShowUserMenu(!showUserMenu);
               setShowNotificationMenu(false);
             }}
-            className="flex items-center space-x-3 p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="flex items-center space-x-3 p-2 hover:bg-slate-100 rounded-xl transition-colors"
           >
-            <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center">
+            <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center shadow-sm shadow-primary-300/40">
               <span className="text-white text-sm font-medium">
                 {userInitial}
               </span>
@@ -184,12 +225,12 @@ export default function Header() {
             <>
               {/* Backdrop */}
               <div
-                className="fixed inset-0 z-10"
+                className="fixed inset-0 z-[70]"
                 onClick={() => setShowUserMenu(false)}
               />
               
               {/* Menu */}
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+              <div className="fixed right-2 sm:right-6 top-[4.25rem] w-56 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-[80]">
                 <button
                   onClick={() => {
                     setShowUserMenu(false);

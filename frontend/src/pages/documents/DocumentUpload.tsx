@@ -385,16 +385,16 @@ export default function DocumentUpload() {
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Insurance Document Intake</h1>
-        <p className="text-gray-600">Step-by-step onboarding form with required documents and credentialing details.</p>
+      <div className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur p-4 shadow-sm">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Insurance Document Intake</h1>
+        <p className="text-slate-600">Step-by-step onboarding form with required documents and credentialing details.</p>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {success && <p className="text-sm text-green-600">{success}</p>}
+      {error && <p className="text-sm text-red-700 rounded-xl border border-red-200 bg-red-50 px-3 py-2">{error}</p>}
+      {success && <p className="text-sm text-emerald-700 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">{success}</p>}
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        <section className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+        <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
           <div className="flex items-center gap-2">
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">1</span>
             <h2 className="font-semibold text-gray-900">Select Intake Type</h2>
@@ -409,7 +409,7 @@ export default function DocumentUpload() {
               return (
                 <label
                   key={item.value}
-                  className={`flex items-center gap-3 border rounded-lg px-3 py-2 cursor-pointer ${checked ? 'border-primary-500 bg-primary-50' : 'border-gray-300 bg-white'}`}
+                  className={`flex items-center gap-3 border rounded-xl px-3 py-2 cursor-pointer ${checked ? 'border-primary-500 bg-primary-50 shadow-sm' : 'border-slate-300 bg-white'}`}
                 >
                   <input
                     type="checkbox"
@@ -425,7 +425,7 @@ export default function DocumentUpload() {
           <p className="text-xs text-gray-500">Checklist style with single selection enabled.</p>
         </section>
 
-        <section className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+        <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
           <div className="flex items-center gap-2">
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">2</span>
             <h2 className="font-semibold text-gray-900">Select Insurance Services by Client</h2>
@@ -433,9 +433,9 @@ export default function DocumentUpload() {
           {loadingProviders ? (
             <p className="text-sm text-gray-600">Loading clients and insurance services...</p>
           ) : (
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
               <table className="min-w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-slate-50/90">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium text-gray-700 w-[240px]">Client Name</th>
                     <th className="px-4 py-3 text-left font-medium text-gray-700">Insurance Services (select multiple)</th>
@@ -447,7 +447,7 @@ export default function DocumentUpload() {
                       <td className="px-4 py-4 text-gray-500" colSpan={2}>No clients found.</td>
                     </tr>
                   ) : clientInsuranceRows.map((row) => (
-                    <tr key={row.clientId} className="border-t border-gray-100 bg-white">
+                    <tr key={row.clientId} className="border-t border-slate-100 bg-white">
                       <td className="px-4 py-3 text-gray-700 align-top">{row.clientName}</td>
                       <td className="px-4 py-3">
                         {row.insurances.length === 0 ? (
@@ -457,7 +457,7 @@ export default function DocumentUpload() {
                             {row.insurances.map((insurance) => {
                               const checked = selectedInsuranceKeys.includes(getInsuranceKey(row.clientId, insurance));
                               return (
-                                <label key={`${row.clientId}-${insurance}`} className="inline-flex items-center gap-2 border border-gray-300 rounded-md px-2 py-1 bg-white">
+                                <label key={`${row.clientId}-${insurance}`} className="inline-flex items-center gap-2 border border-slate-300 rounded-lg px-2 py-1 bg-white">
                                   <input
                                     type="checkbox"
                                     checked={checked}
@@ -482,18 +482,18 @@ export default function DocumentUpload() {
         </section>
 
         {checklistVisible && (
-          <section className="bg-white border border-gray-200 rounded-lg p-5 space-y-6">
+          <section className="bg-white border border-slate-200 rounded-2xl p-5 space-y-6 shadow-sm">
             <div className="flex items-center gap-2">
               <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">3</span>
               <h2 className="font-semibold text-gray-900">Group Onboarding Checklist to Initiate Credentialing</h2>
             </div>
 
-            <div className="rounded-lg border border-gray-200 p-3 bg-slate-50 text-sm text-slate-700">
+            <div className="rounded-xl border border-slate-200 p-3 bg-slate-50 text-sm text-slate-700">
               <p><span className="font-semibold">Intake Type:</span> {selectedIntakeOption || 'N/A'}</p>
               <p><span className="font-semibold">Selected Insurance Items:</span> {selectedInsuranceSelections.length}</p>
             </div>
 
-            <div className="space-y-3 border border-gray-200 rounded-lg p-4">
+            <div className="space-y-3 border border-slate-200 rounded-xl p-4">
               <h3 className="font-semibold text-gray-900">1) Select Provider Type</h3>
               <RadioLine name="providerType" value="medical" current={formData.providerType} onChange={handleInputChange} label="Medical" />
               <RadioLine name="providerType" value="behavioral" current={formData.providerType} onChange={handleInputChange} label="Behavioral" />
@@ -503,7 +503,7 @@ export default function DocumentUpload() {
               )}
             </div>
 
-            <div className="space-y-3 border border-gray-200 rounded-lg p-4">
+            <div className="space-y-3 border border-slate-200 rounded-xl p-4">
               <h3 className="font-semibold text-gray-900">2) Select Enrollment Type</h3>
               <RadioLine name="enrollmentType" value="group" current={formData.enrollmentType} onChange={handleInputChange} label="Group" />
               <RadioLine name="enrollmentType" value="hospital" current={formData.enrollmentType} onChange={handleInputChange} label="Hospital" />
@@ -514,7 +514,7 @@ export default function DocumentUpload() {
               )}
             </div>
 
-            <div className="space-y-3 border border-gray-200 rounded-lg p-4">
+            <div className="space-y-3 border border-slate-200 rounded-xl p-4">
               <h3 className="font-semibold text-gray-900">3) Select Services Provided</h3>
               <CheckLine name="services.outPatient" checked={formData.services.outPatient} onChange={handleInputChange} label="Out-Patient Services" />
               <CheckLine name="services.inPatient" checked={formData.services.inPatient} onChange={handleInputChange} label="In-Patient Services" />
@@ -525,7 +525,7 @@ export default function DocumentUpload() {
               )}
             </div>
 
-            <div className="space-y-4 border border-gray-200 rounded-lg p-4">
+            <div className="space-y-4 border border-slate-200 rounded-xl p-4">
               <h3 className="font-semibold text-gray-900">4) Organization/Group/Hospital/Facility Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <LabeledField label="Legal Business Name" name="legalName" value={formData.legalName} onChange={handleInputChange} />
@@ -556,12 +556,12 @@ export default function DocumentUpload() {
                   value={formData.ownershipDetails}
                   onChange={handleInputChange}
                   rows={3}
-                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm"
                 />
               </div>
             </div>
 
-            <div className="space-y-4 border border-gray-200 rounded-lg p-4">
+            <div className="space-y-4 border border-slate-200 rounded-xl p-4">
               <h3 className="font-semibold text-gray-900">5) Required Copy of Documents</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <FileField label="IRS Document / CP575 / 147c" file={formData.documents.irsDocument} onChange={(e) => handleFileChange(e, 'irsDocument')} />
@@ -573,7 +573,7 @@ export default function DocumentUpload() {
               </div>
             </div>
 
-            <div className="space-y-4 border border-gray-200 rounded-lg p-4">
+            <div className="space-y-4 border border-slate-200 rounded-xl p-4">
               <h3 className="font-semibold text-gray-900">6) Required Logins</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <LabeledField label="NPPES / Pecos Portal Login" name="nppesLogin" value={formData.nppesLogin} onChange={handleInputChange} />
@@ -582,7 +582,7 @@ export default function DocumentUpload() {
               </div>
             </div>
 
-            <div className="space-y-4 border border-gray-200 rounded-lg p-4">
+            <div className="space-y-4 border border-slate-200 rounded-xl p-4">
               <h3 className="font-semibold text-gray-900">7) Required Copy of the Documents for Individual</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <FileField label="State Licenses & Certifications" file={formData.documents.stateLicense} onChange={(e) => handleFileChange(e, 'stateLicense')} />
@@ -598,17 +598,17 @@ export default function DocumentUpload() {
                 value={formData.notes}
                 onChange={handleInputChange}
                 rows={3}
-                className="w-full border border-gray-300 rounded px-3 py-2"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm"
                 placeholder="Any additional notes"
               />
             </div>
 
-            <div className="flex items-center justify-between border-t border-gray-200 pt-4">
-              <p className="text-sm text-gray-600">Files selected: {uploadedFilesCount}</p>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-t border-slate-200 pt-4">
+              <p className="text-sm text-slate-600">Files selected: {uploadedFilesCount}</p>
               <button
                 type="submit"
                 disabled={saving || uploadedFilesCount === 0 || selectedInsuranceKeys.length === 0 || !selectedIntakeOption}
-                className="px-4 py-2 rounded-lg bg-primary-600 text-white disabled:opacity-50"
+                className="px-4 py-2 rounded-xl bg-primary-600 text-white shadow-sm shadow-primary-300/40 hover:bg-primary-700 disabled:opacity-50"
               >
                 {saving ? 'Uploading...' : 'Submit Enrollment Documents'}
               </button>
@@ -637,7 +637,7 @@ function LabeledField({ label, name, value, onChange, type = 'text' }: LabeledFi
         name={name}
         value={value}
         onChange={onChange}
-        className="w-full border border-gray-300 rounded px-3 py-2"
+        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm"
       />
     </div>
   );
@@ -656,7 +656,7 @@ function FileField({ label, file, onChange }: FileFieldProps) {
       <input
         type="file"
         onChange={onChange}
-        className="w-full border border-gray-300 rounded px-3 py-2"
+        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm"
         accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif"
       />
       {file && <p className="text-xs text-green-600 mt-1">{file.name}</p>}
@@ -712,7 +712,7 @@ function FieldInput({ name, value, placeholder = '', onChange }: FieldInputProps
       value={value}
       placeholder={placeholder}
       onChange={onChange}
-      className="w-full border border-gray-300 rounded px-3 py-2"
+      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm"
     />
   );
 }

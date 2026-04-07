@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { FiCheck, FiEye, FiRotateCcw, FiTrash2, FiX } from 'react-icons/fi';
 import { documentService } from '../../services/documentService';
 import { useAuthStore } from '../../store/authStore';
 import Modal from '../../components/common/Modal';
@@ -84,7 +85,7 @@ export default function DocumentList() {
 
 	const handleApprove = async (id: string, adminNote?: string) => {
 		try {
-			await documentService.updateStatus(id, 'approved', undefined, adminNote);
+			await documentService.updateStatus(id, 'approved', undefined, adminNote, true);
 			await loadDocuments();
 		} catch (err: any) {
 			setError(err.response?.data?.message || 'Failed to approve document');
@@ -93,7 +94,7 @@ export default function DocumentList() {
 
 	const handleReject = async (id: string, reason: string) => {
 		try {
-			await documentService.updateStatus(id, 'rejected', reason, reason);
+			await documentService.updateStatus(id, 'rejected', reason, reason, true);
 			await loadDocuments();
 		} catch (err: any) {
 			setError(err.response?.data?.message || 'Failed to reject document');
@@ -144,6 +145,23 @@ export default function DocumentList() {
 		return submittedBy.fullName || submittedBy.email || 'N/A';
 	};
 
+	const statusBadgeClass = (status: string) => {
+		switch (status) {
+			case 'approved':
+				return 'bg-emerald-100 text-emerald-700';
+			case 'rejected':
+				return 'bg-rose-100 text-rose-700';
+			case 'under_review':
+				return 'bg-amber-100 text-amber-700';
+			case 'submitted':
+				return 'bg-indigo-100 text-indigo-700';
+			default:
+				return 'bg-blue-100 text-blue-700';
+		}
+	};
+
+	const actionBtnClass = 'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md font-medium transition-colors';
+
 	const confirmAction = async (note?: string) => {
 		if (!actionModal.documentId || !actionModal.type) return;
 
@@ -172,31 +190,32 @@ export default function DocumentList() {
 
 	return (
 		<div className="space-y-4">
-			<div className="flex items-center justify-between gap-3">
+			<div className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur px-4 py-4 sm:px-5 sm:py-5 shadow-sm">
+			<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
 				<div>
-					<h1 className="text-2xl font-bold text-gray-900">Documents</h1>
-					<p className="text-gray-600">
+					<h1 className="text-2xl font-bold tracking-tight text-slate-900">Documents</h1>
+					<p className="text-slate-600 max-w-xl">
 						{isAdmin
 							? 'Uploaded credentialing documents and review status.'
 							: 'Your uploaded credentialing documents and review status.'}
 					</p>
 				</div>
-				<Link to="/documents/upload" className="px-3 py-2 rounded-lg bg-primary-600 text-white text-sm">
+				<Link to="/documents/upload" className="self-start px-4 py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold shadow-sm hover:bg-primary-700 transition-colors">
 					Upload Document
 				</Link>
 			</div>
 
-			<div className="flex flex-wrap gap-2">
+			<div className="flex flex-wrap gap-2 mt-4">
 				{statusOptions.map((option) => {
 					const isActive = statusFilter === option.value;
 					return (
 						<button
 							key={option.label}
 							onClick={() => applyStatusFilter(option.value)}
-							className={`px-3 py-1.5 rounded-full text-xs font-medium border ${
+							className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
 								isActive
-									? 'bg-primary-600 text-white border-primary-600'
-									: 'bg-white text-gray-700 border-gray-300 hover:border-primary-400'
+									? 'bg-primary-600 text-white border-primary-600 shadow-sm shadow-primary-300/30'
+									: 'bg-white text-slate-700 border-slate-300 hover:border-primary-300 hover:text-primary-700'
 							}`}
 						>
 							{option.label}
@@ -204,64 +223,153 @@ export default function DocumentList() {
 					);
 				})}
 			</div>
+			</div>
 
 			{loading && <p className="text-sm text-gray-600">Loading documents...</p>}
 			{error && <p className="text-sm text-red-600">{error}</p>}
 
 			{!loading && !error && (
-				<div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-					<table className="min-w-full text-sm">
-						<thead className="bg-gray-50">
+				<>
+					<div className="md:hidden space-y-3">
+						{documents.length === 0 ? (
+							<div className="bg-white border border-gray-200 rounded-lg p-4 text-sm text-gray-500">No documents found.</div>
+						) : documents.map((doc) => (
+							<div key={`mobile-${doc._id}`} className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+								<div className="flex items-start justify-between gap-3">
+									<div className="min-w-0">
+										<p className="font-semibold text-gray-900 break-words">{doc.documentType}</p>
+										<p className="text-xs text-gray-500 mt-0.5">{new Date(doc.createdAt).toLocaleDateString()}</p>
+									</div>
+									<span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium shrink-0 ${statusBadgeClass(doc.status)}`}>
+										{doc.status}
+									</span>
+								</div>
+
+								<div>
+									<p className="text-xs text-gray-500">File</p>
+									{doc.filesCount && doc.filesCount > 1 ? (
+										<div>
+											<p className="text-sm font-medium text-gray-800">{doc.filesCount} files submitted</p>
+											<p className="text-xs text-gray-500 break-all">{doc.fileName}</p>
+										</div>
+									) : (
+										<p className="text-sm text-gray-800 break-all">{doc.fileName}</p>
+									)}
+								</div>
+
+								<div className="grid grid-cols-1 gap-2 text-sm">
+									<p className="text-gray-700 break-words"><span className="text-gray-500">Provider:</span> {getProviderColumnValue(doc)}</p>
+									{isAdmin && (
+										<p className="text-gray-700 break-words"><span className="text-gray-500">Submitted By:</span> {getSubmittedByDisplayName(doc.uploadedBy)}</p>
+									)}
+								</div>
+
+								<div className="flex flex-wrap gap-2 pt-1">
+									<button onClick={() => handleOpen(doc._id)} className={`${actionBtnClass} bg-slate-100 text-slate-700 hover:bg-slate-200`}>
+										<FiEye className="h-3.5 w-3.5" />
+										Open
+									</button>
+									{isAdmin ? (
+										<>
+											{doc.status !== 'approved' && (
+												<button onClick={() => openActionModal('approve', doc._id)} className={`${actionBtnClass} bg-emerald-100 text-emerald-700 hover:bg-emerald-200`}>
+													<FiCheck className="h-3.5 w-3.5" />
+													Approve
+												</button>
+											)}
+											{doc.status !== 'rejected' && (
+												<button onClick={() => openActionModal('reject', doc._id)} className={`${actionBtnClass} bg-rose-100 text-rose-700 hover:bg-rose-200`}>
+													<FiX className="h-3.5 w-3.5" />
+													Reject
+												</button>
+											)}
+											<button onClick={() => openActionModal('delete', doc._id)} className={`${actionBtnClass} bg-red-100 text-red-700 hover:bg-red-200`}>
+												<FiTrash2 className="h-3.5 w-3.5" />
+												Delete
+											</button>
+										</>
+									) : (
+										doc.status === 'rejected' && (
+											<button onClick={() => handleReUpload(doc)} className={`${actionBtnClass} bg-amber-100 text-amber-700 hover:bg-amber-200`}>
+												<FiRotateCcw className="h-3.5 w-3.5" />
+												Re-upload
+											</button>
+										)
+									)}
+								</div>
+							</div>
+						))}
+					</div>
+
+					<div className="hidden md:block bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+						<div className="overflow-x-auto">
+						<table className="min-w-[980px] w-full text-sm">
+						<thead className="bg-slate-50/90">
 							<tr>
-								<th className="px-4 py-3 text-left font-medium text-gray-700">Document</th>
-								<th className="px-4 py-3 text-left font-medium text-gray-700">File</th>
-								<th className="px-4 py-3 text-left font-medium text-gray-700">Provider</th>
-								{isAdmin && <th className="px-4 py-3 text-left font-medium text-gray-700">Submitted By</th>}
-								<th className="px-4 py-3 text-left font-medium text-gray-700">Status</th>
-								<th className="px-4 py-3 text-left font-medium text-gray-700">Uploaded</th>
-								<th className="px-4 py-3 text-left font-medium text-gray-700">Actions</th>
+								<th className="px-4 py-3 text-left font-semibold text-slate-700">Document</th>
+								<th className="px-4 py-3 text-left font-semibold text-slate-700">File</th>
+								<th className="px-4 py-3 text-left font-semibold text-slate-700">Provider</th>
+								{isAdmin && <th className="px-4 py-3 text-left font-semibold text-slate-700">Submitted By</th>}
+								<th className="px-4 py-3 text-left font-semibold text-slate-700">Status</th>
+								<th className="px-4 py-3 text-left font-semibold text-slate-700">Uploaded</th>
+								<th className="px-4 py-3 text-left font-semibold text-slate-700">Actions</th>
 							</tr>
 						</thead>
 						<tbody>
 							{documents.length === 0 ? (
-								<tr><td className="px-4 py-4 text-gray-500" colSpan={isAdmin ? 7 : 6}>No documents found.</td></tr>
+								<tr><td className="px-4 py-4 text-slate-500" colSpan={isAdmin ? 7 : 6}>No documents found.</td></tr>
 							) : documents.map((doc) => (
-								<tr key={doc._id} className="border-t border-gray-100">
-									<td className="px-4 py-3 text-gray-900">{doc.documentType}</td>
-									<td className="px-4 py-3 text-gray-700">
+								<tr key={doc._id} className="border-t border-slate-100 hover:bg-slate-50/50 transition-colors">
+									<td className="px-4 py-3 text-slate-900 font-medium">{doc.documentType}</td>
+									<td className="px-4 py-3 text-slate-700">
 										{doc.filesCount && doc.filesCount > 1 ? (
 											<div>
-												<p className="font-medium">{doc.filesCount} files submitted</p>
-												<p className="text-xs text-gray-500">{doc.fileName}</p>
+												<p className="font-semibold text-slate-800">{doc.filesCount} files submitted</p>
+												<p className="text-xs text-slate-500">{doc.fileName}</p>
 											</div>
 										) : (
 											doc.fileName
 										)}
 									</td>
-									<td className="px-4 py-3 text-gray-700">{getProviderColumnValue(doc)}</td>
+									<td className="px-4 py-3 text-slate-700">{getProviderColumnValue(doc)}</td>
 									{isAdmin && (
-										<td className="px-4 py-3 text-gray-700">
+										<td className="px-4 py-3 text-slate-700">
 											{getSubmittedByDisplayName(doc.uploadedBy)}
 										</td>
 									)}
-									<td className="px-4 py-3"><span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{doc.status}</span></td>
-									<td className="px-4 py-3 text-gray-700">{new Date(doc.createdAt).toLocaleDateString()}</td>
+									<td className="px-4 py-3"><span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${statusBadgeClass(doc.status)}`}>{doc.status}</span></td>
+									<td className="px-4 py-3 text-slate-700">{new Date(doc.createdAt).toLocaleDateString()}</td>
 									<td className="px-4 py-3">
-										<div className="flex flex-wrap gap-2">
-											<button onClick={() => handleOpen(doc._id)} className="px-2 py-1 text-xs rounded bg-slate-100 text-slate-700">Open</button>
+										<div className="flex flex-wrap lg:flex-nowrap gap-2">
+											<button onClick={() => handleOpen(doc._id)} className={`${actionBtnClass} bg-slate-100 text-slate-700 hover:bg-slate-200`}>
+												<FiEye className="h-3.5 w-3.5" />
+												Open
+											</button>
 											{isAdmin ? (
 												<>
 													{doc.status !== 'approved' && (
-														<button onClick={() => openActionModal('approve', doc._id)} className="px-2 py-1 text-xs rounded bg-emerald-100 text-emerald-700">Approve</button>
+														<button onClick={() => openActionModal('approve', doc._id)} className={`${actionBtnClass} bg-emerald-100 text-emerald-700 hover:bg-emerald-200`}>
+															<FiCheck className="h-3.5 w-3.5" />
+															Approve
+														</button>
 													)}
 													{doc.status !== 'rejected' && (
-														<button onClick={() => openActionModal('reject', doc._id)} className="px-2 py-1 text-xs rounded bg-rose-100 text-rose-700">Reject</button>
+														<button onClick={() => openActionModal('reject', doc._id)} className={`${actionBtnClass} bg-rose-100 text-rose-700 hover:bg-rose-200`}>
+															<FiX className="h-3.5 w-3.5" />
+															Reject
+														</button>
 													)}
-													<button onClick={() => openActionModal('delete', doc._id)} className="px-2 py-1 text-xs rounded bg-red-100 text-red-700">Delete</button>
+													<button onClick={() => openActionModal('delete', doc._id)} className={`${actionBtnClass} bg-red-100 text-red-700 hover:bg-red-200`}>
+														<FiTrash2 className="h-3.5 w-3.5" />
+														Delete
+													</button>
 												</>
 											) : (
 												doc.status === 'rejected' && (
-													<button onClick={() => handleReUpload(doc)} className="px-2 py-1 text-xs rounded bg-amber-100 text-amber-700">Re-upload</button>
+													<button onClick={() => handleReUpload(doc)} className={`${actionBtnClass} bg-amber-100 text-amber-700 hover:bg-amber-200`}>
+														<FiRotateCcw className="h-3.5 w-3.5" />
+														Re-upload
+													</button>
 												)
 											)}
 										</div>
@@ -270,7 +378,9 @@ export default function DocumentList() {
 							))}
 						</tbody>
 					</table>
-				</div>
+						</div>
+					</div>
+				</>
 			)}
 
 			<Modal

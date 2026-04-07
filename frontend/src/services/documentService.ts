@@ -60,11 +60,18 @@ export const documentService = {
 		return response.data?.data?.document;
 	},
 
-	async updateStatus(id: string, status: string, rejectionReason?: string, adminNote?: string): Promise<Document> {
+	async updateStatus(
+		id: string,
+		status: string,
+		rejectionReason?: string,
+		adminNote?: string,
+		applyToSubmission = true
+	): Promise<Document> {
 		const response = await api.put(`/documents/${id}/status`, {
 			status,
 			rejectionReason,
 			adminNote,
+			applyToSubmission,
 		});
 
 		return response.data?.data?.document;
