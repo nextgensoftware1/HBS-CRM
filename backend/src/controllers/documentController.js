@@ -3,7 +3,7 @@ const Document = require('../models/Document');
 const Enrollment = require('../models/Enrollment');
 const Payer = require('../models/Payer');
 // const { uploadFile, deleteFile, getSignedUrl } = require('../services/s3Service');
-const { uploadFile, deleteFile, getFileMetadata, checkDriveAccess } = require('../services/googleDriveService');
+const googleDriveOAuthService = require('../services/googleDriveOAuthService');
 const { createNotification, notifyAdmins } = require('../services/notificationService');
 const multer = require('multer');
 const path = require('path');
@@ -589,7 +589,7 @@ exports.uploadDocument = async (req, res) => {
     }
     
     try {
-      const driveAccessible = await checkDriveAccess();
+      const driveAccessible = await googleDriveOAuthService.checkDriveAccess();
       if (!driveAccessible) {
         return res.status(503).json({
           status: 'error',
@@ -688,7 +688,7 @@ exports.uploadDocument = async (req, res) => {
       }
       
       // Upload file to Google Drive (external storage)
-      const uploadResult = await uploadFile(
+      const uploadResult = await googleDriveOAuthService.uploadFileToAdminDrive(
         req.file.buffer,
         req.file.originalname,
         req.file.mimetype
@@ -719,7 +719,7 @@ exports.uploadDocument = async (req, res) => {
         // Best-effort deletion of old storage object.
         try {
           if (existingDocument.fileKey) {
-            await deleteFile(existingDocument.fileKey);
+            await googleDriveOAuthService.deleteFile(existingDocument.fileKey);
           }
         } catch (deleteErr) {
           console.error('Old file deletion warning:', deleteErr);
@@ -1025,7 +1025,7 @@ exports.deleteDocument = async (req, res) => {
 
     for (const docItem of targets) {
       try {
-        await deleteFile(docItem.fileKey);
+        await googleDriveOAuthService.deleteFile(docItem.fileKey);
       } catch (storageError) {
         console.error('Storage deletion error:', storageError);
       }
@@ -1097,7 +1097,7 @@ exports.downloadDocument = async (req, res) => {
     // Generate signed URL (valid for 1 hour)
     // const signedUrl = getSignedUrl(document.fileKey, 3600);
     // Get Google Drive view link
-    const metadata = await getFileMetadata(document.fileKey);
+    const metadata = await googleDriveOAuthService.getFileMetadata(document.fileKey);
     const viewUrl = metadata.file.webViewLink;
     
     
