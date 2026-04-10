@@ -67,7 +67,6 @@ const migrateEnrollmentIndexes = async () => {
 };
 
 const app = express();
-
 // Avoid 304 responses for API XHR calls that can break client-side data loading flows.
 app.set('etag', false);
 
