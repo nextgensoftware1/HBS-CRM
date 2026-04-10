@@ -8,9 +8,7 @@ import { FiShield, FiFileText, FiUser, FiHome, FiPhone, FiMail, FiCreditCard } f
 
 type EnrollmentRow = {
   _id: string;
-  payerId?: {
-    payerName?: string;
-  };
+  insuranceService?: string;
 };
 
 const safeDate = (value?: string | Date | null) => {
@@ -32,6 +30,8 @@ const normalizeInsuranceServices = (values: string[]) => values
   .map((value) => value.trim())
   .filter(Boolean);
 
+const PROVIDER_CATEGORIES = ['Individual', 'Group', 'Facility', 'Multiple'] as const;
+
 export default function ProviderDetail() {
   const { id } = useParams();
   const user = useAuthStore((state) => state.user);
@@ -49,6 +49,7 @@ export default function ProviderDetail() {
     lastName: '',
     npi: '',
     specialization: '',
+    providerCategory: 'Individual' as (typeof PROVIDER_CATEGORIES)[number],
     email: '',
     phone: '',
     dateOfBirth: '',
@@ -87,6 +88,7 @@ export default function ProviderDetail() {
       lastName: nextProvider?.lastName || '',
       npi: nextProvider?.npi || '',
       specialization: nextProvider?.specialization || '',
+      providerCategory: nextProvider?.providerCategory || 'Individual',
       email: nextProvider?.email || '',
       phone: nextProvider?.phone || '',
       dateOfBirth: nextProvider?.dateOfBirth ? new Date(nextProvider.dateOfBirth).toISOString().slice(0, 10) : '',
@@ -124,7 +126,7 @@ export default function ProviderDetail() {
       try {
         const data = await providerService.getProviderProfile(id);
         const fallbackFromEnrollments = (data.enrollments || [])
-          .map((entry: EnrollmentRow) => entry.payerId?.payerName?.trim())
+          .map((entry: EnrollmentRow) => entry.insuranceService?.trim())
           .filter((value: string | undefined): value is string => Boolean(value));
 
         setProvider(data.provider);
@@ -159,7 +161,7 @@ export default function ProviderDetail() {
     }
 
     const fromEnrollments = enrollments
-      .map((entry) => entry.payerId?.payerName?.trim())
+      .map((entry) => entry.insuranceService?.trim())
       .filter((value): value is string => Boolean(value));
 
     return Array.from(new Set(fromEnrollments));
@@ -203,6 +205,7 @@ export default function ProviderDetail() {
         lastName: editForm.lastName.trim(),
         npi: editForm.npi.trim(),
         specialization: editForm.specialization.trim(),
+        providerCategory: editForm.providerCategory,
         email: editForm.email.trim(),
         phone: editForm.phone.trim(),
         dateOfBirth: editForm.dateOfBirth || null,
@@ -410,6 +413,22 @@ export default function ProviderDetail() {
               inputValue={editForm.npi}
               onChange={(value) => setEditForm((prev) => ({ ...prev, npi: value }))}
             />
+            <div className="rounded-lg border border-slate-200 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">Provider Category</p>
+              {isEditing && canEdit ? (
+                <select
+                  value={editForm.providerCategory}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, providerCategory: e.target.value as (typeof PROVIDER_CATEGORIES)[number] }))}
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm"
+                >
+                  {PROVIDER_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-sm font-medium text-slate-900 mt-1 break-words">{provider.providerCategory || 'Individual'}</p>
+              )}
+            </div>
             <EditableRow
               label="DOB"
               isEditing={isEditing && canEdit}

@@ -21,6 +21,7 @@ const notificationSchema = new mongoose.Schema({
       'document_rejected',
       'document_deleted',
       'document_status_changed',
+      'enrollment_assigned',
     ],
     required: true,
   },

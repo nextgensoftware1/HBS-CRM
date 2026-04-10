@@ -1,6 +1,7 @@
 // backend/src/controllers/authController.js
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Provider = require('../models/Provider');
 
 // Generate JWT token
 const generateToken = (id) => {
@@ -119,7 +120,8 @@ exports.login = async (req, res) => {
           fullName: user.fullName,
           role: user.role,
           permissions: user.permissions,
-          clientId: user.clientId
+          clientId: user.clientId,
+          assignedProviders: user.assignedProviders || []
         },
         token
       }
@@ -138,7 +140,9 @@ exports.login = async (req, res) => {
 // @access  Private
 exports.getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).populate('clientId', 'practiceName');
+    const user = await User.findById(req.user._id)
+      .populate('clientId', 'practiceName')
+      .populate('assignedProviders', '_id firstName lastName npi');
 
     res.status(200).json({
       status: 'success',
@@ -206,6 +210,7 @@ exports.getAllUsers = async (req, res) => {
     const users = await User.find()
       .select('-password')
       .populate('clientId', 'practiceName')
+      .populate('assignedProviders', '_id firstName lastName npi')
       .sort({ createdAt: -1 });
 
     const onlineThresholdMs = 5 * 60 * 1000;
@@ -369,6 +374,110 @@ exports.createUserByAdmin = async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: 'Error creating user',
+    });
+  }
+};
+
+// @desc    Delete user (admin)
+// @route   DELETE /api/auth/users/:id
+// @access  Private (Admin)
+exports.deleteUserByAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (String(req.user._id) === String(id)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'You cannot delete your own account',
+      });
+    }
+
+    const deletedUser = await User.findByIdAndDelete(id);
+
+    if (!deletedUser) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found',
+      });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'User deleted successfully',
+      data: {
+        userId: id,
+      },
+    });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error deleting user',
+    });
+  }
+};
+
+// @desc    Assign one provider to user (admin)
+// @route   PATCH /api/auth/users/:id/provider
+// @access  Private (Admin)
+exports.assignUserProvider = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { providerId } = req.body;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found',
+      });
+    }
+
+    if (!providerId) {
+      user.assignedProviders = [];
+      await user.save();
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Provider assignment cleared',
+        data: {
+          user: {
+            _id: user._id,
+            assignedProviders: [],
+          },
+        },
+      });
+    }
+
+    const provider = await Provider.findById(providerId).select('_id');
+    if (!provider) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Provider not found',
+      });
+    }
+
+    user.assignedProviders = [provider._id];
+    await user.save();
+
+    const updatedUser = await User.findById(user._id)
+      .populate('assignedProviders', '_id firstName lastName npi');
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Provider assigned successfully',
+      data: {
+        user: {
+          _id: updatedUser._id,
+          assignedProviders: updatedUser.assignedProviders,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Assign provider error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error assigning provider',
     });
   }
 };

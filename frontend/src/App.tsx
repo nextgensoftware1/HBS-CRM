@@ -15,7 +15,6 @@ import DocumentList from './pages/documents/DocumentList';
 import DocumentUpload from './pages/documents/DocumentUpload';
 import DocumentSubmissionDetail from './pages/documents/DocumentSubmissionDetail';
 import ReminderList from './pages/reminders/ReminderList';
-import PayerList from './pages/payers/PayerList';
 
 const RoleHomeRedirect = () => {
   const { isAuthenticated, user } = useAuthStore();
@@ -119,10 +118,6 @@ function App() {
                 <ProviderDetail />
               </AdminRoute>
             }
-          />
-          <Route
-            path="payers"
-            element={<PayerList />}
           />
           <Route
             path="enrollments"

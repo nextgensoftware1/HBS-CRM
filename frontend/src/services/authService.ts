@@ -59,4 +59,15 @@ export const authService = {
     const response = await api.post('/auth/users', data);
     return response.data?.data?.user;
   },
+
+  // Admin: delete user
+  async deleteUser(userId: string): Promise<void> {
+    await api.delete(`/auth/users/${userId}`);
+  },
+
+  // Admin: assign one provider to user (or clear assignment)
+  async assignUserProvider(userId: string, providerId: string | null): Promise<any> {
+    const response = await api.patch(`/auth/users/${userId}/provider`, { providerId });
+    return response.data?.data?.user;
+  },
 };

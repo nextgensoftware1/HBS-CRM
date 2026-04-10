@@ -1,8 +1,48 @@
 // backend/src/controllers/enrollmentController.js
 const Enrollment = require('../models/Enrollment');
 const Provider = require('../models/Provider');
-const Payer = require('../models/Payer');
 const Document = require('../models/Document');
+const User = require('../models/User');
+const { createNotification } = require('../services/notificationService');
+
+const isAdminUser = (user) => user?.role === 'admin';
+
+const isAssignedEnrollmentUser = (enrollment, userId) => {
+  if (!enrollment?.assignedTo) return false;
+  return String(enrollment.assignedTo) === String(userId);
+};
+
+const getProviderDisplayName = (provider) => {
+  if (!provider) return 'Provider';
+  const firstName = String(provider.firstName || '').trim();
+  const lastName = String(provider.lastName || '').trim();
+  const fullName = `${firstName} ${lastName}`.trim();
+  return fullName || provider.npi || 'Provider';
+};
+
+const notifyEnrollmentAssignee = async ({ enrollment, recipientUserId, actorUserId, provider }) => {
+  if (!recipientUserId || !actorUserId || !enrollment?._id) {
+    return;
+  }
+
+  const providerLabel = getProviderDisplayName(provider);
+  const insuranceLabel = String(enrollment.insuranceService || '').trim() || 'Insurance Service';
+
+  await createNotification({
+    recipient: recipientUserId,
+    actor: actorUserId,
+    type: 'enrollment_assigned',
+    title: 'Enrollment assigned to you',
+    message: `You have been assigned enrollment for ${providerLabel} - ${insuranceLabel}.`,
+    entityType: 'enrollment',
+    entityId: enrollment._id,
+    metadata: {
+      enrollmentId: enrollment._id,
+      providerId: provider?._id || enrollment.providerId,
+      insuranceService: insuranceLabel,
+    },
+  });
+};
 
 // @desc    Get all enrollments
 // @route   GET /api/enrollments
@@ -13,7 +53,7 @@ exports.getAllEnrollments = async (req, res) => {
       search, 
       status, 
       providerId, 
-      payerId, 
+      insuranceService,
       assignedTo, 
       priority,
       page = 1, 
@@ -31,8 +71,8 @@ exports.getAllEnrollments = async (req, res) => {
       query.providerId = providerId;
     }
     
-    if (payerId) {
-      query.payerId = payerId;
+    if (insuranceService) {
+      query.insuranceService = { $regex: insuranceService, $options: 'i' };
     }
     
     if (assignedTo) {
@@ -42,11 +82,14 @@ exports.getAllEnrollments = async (req, res) => {
     if (priority) {
       query.priority = priority;
     }
+
+    if (!isAdminUser(req.user)) {
+      query.assignedTo = req.user._id;
+    }
     
     // Execute query with pagination
     const enrollments = await Enrollment.find(query)
       .populate('providerId', 'firstName lastName npi specialization')
-      .populate('payerId', 'payerName payerType')
       .populate('assignedTo', 'fullName email')
       .populate('createdBy', 'fullName')
       .sort({ createdAt: -1 })
@@ -60,10 +103,10 @@ exports.getAllEnrollments = async (req, res) => {
     let filteredEnrollments = enrollments;
     if (search) {
       filteredEnrollments = enrollments.filter(enrollment => {
-        const providerName = `${enrollment.providerId.firstName} ${enrollment.providerId.lastName}`.toLowerCase();
-        const payerName = enrollment.payerId.payerName.toLowerCase();
+        const providerName = `${enrollment.providerId?.firstName || ''} ${enrollment.providerId?.lastName || ''}`.toLowerCase();
+        const insuranceName = String(enrollment.insuranceService || '').toLowerCase();
         const searchLower = search.toLowerCase();
-        return providerName.includes(searchLower) || payerName.includes(searchLower);
+        return providerName.includes(searchLower) || insuranceName.includes(searchLower);
       });
     }
     
@@ -94,7 +137,6 @@ exports.getEnrollment = async (req, res) => {
   try {
     const enrollment = await Enrollment.findById(req.params.id)
       .populate('providerId')
-      .populate('payerId')
       .populate('assignedTo', 'fullName email')
       .populate('createdBy', 'fullName')
       .populate('timeline.performedBy', 'fullName')
@@ -104,6 +146,13 @@ exports.getEnrollment = async (req, res) => {
       return res.status(404).json({
         status: 'error',
         message: 'Enrollment not found'
+      });
+    }
+
+    if (!isAdminUser(req.user) && !isAssignedEnrollmentUser(enrollment, req.user._id)) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'You can only access enrollments assigned to you'
       });
     }
     
@@ -136,28 +185,125 @@ exports.createEnrollment = async (req, res) => {
   try {
     const {
       providerId,
-      payerId,
+      insuranceService,
       priority,
       assignedTo,
-      notes
+      notes,
+      providerData,
     } = req.body;
+
+    const normalizedInsuranceService = String(insuranceService || '').trim();
+    if (!normalizedInsuranceService) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Insurance service is required'
+      });
+    }
+
+    let resolvedProviderId = providerId;
+    let enrollmentProfile = {};
+    let normalizedEnrollmentNpi = '';
+
+    if (!resolvedProviderId) {
+      const providerPayload = providerData || {};
+      const requiredProviderFields = [
+        'clientName',
+        'firstName',
+        'lastName',
+        'npi',
+        'specialization',
+        'licenseNumber',
+        'licenseState',
+        'licenseExpiryDate',
+        'email',
+      ];
+
+      const missingField = requiredProviderFields.find((field) => !String(providerPayload[field] || '').trim());
+      if (missingField) {
+        return res.status(400).json({
+          status: 'error',
+          message: `Enrollment ${missingField} is required`
+        });
+      }
+
+      normalizedEnrollmentNpi = String(providerPayload.npi || '').trim();
+      resolvedProviderId = null;
+
+      enrollmentProfile = {
+        clientName: String(providerPayload.clientName || '').trim(),
+        firstName: String(providerPayload.firstName || '').trim(),
+        lastName: String(providerPayload.lastName || '').trim(),
+        npi: normalizedEnrollmentNpi,
+        specialization: String(providerPayload.specialization || '').trim(),
+        providerCategory: providerPayload.providerCategory || 'Individual',
+        dateOfBirth: providerPayload.dateOfBirth || null,
+        email: String(providerPayload.email || '').trim(),
+        phone: String(providerPayload.phone || '').trim(),
+        ssn: String(providerPayload.ssn || '').trim() || null,
+        caqhId: String(providerPayload.caqhId || '').trim() || null,
+        medicarePTAN: String(providerPayload.medicarePTAN || '').trim() || null,
+        medicaidId: String(providerPayload.medicaidId || '').trim() || null,
+        licenseNumber: String(providerPayload.licenseNumber || '').trim(),
+        licenseState: String(providerPayload.licenseState || '').trim(),
+        licenseExpiryDate: providerPayload.licenseExpiryDate || null,
+        credentialLogins: {
+          pecosUsername: String(providerPayload.pecosUsername || '').trim() || null,
+          pecosPassword: String(providerPayload.pecosPassword || '').trim() || null,
+          caqhUsername: String(providerPayload.caqhUsername || '').trim() || null,
+          caqhPassword: String(providerPayload.caqhPassword || '').trim() || null,
+        },
+        insuranceServices: Array.isArray(providerPayload.insuranceServices)
+          ? providerPayload.insuranceServices.map((value) => String(value).trim()).filter(Boolean)
+          : [],
+      };
+    }
+
+    const requestedAssigneeId = String(assignedTo || '').trim();
+    if (requestedAssigneeId && !isAdminUser(req.user) && requestedAssigneeId !== String(req.user._id)) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Only admin can assign enrollments to other users'
+      });
+    }
+
+    const assigneeId = requestedAssigneeId || String(req.user._id);
+    const assignmentUser = await User.findOne({ _id: assigneeId, isActive: true }).select('_id fullName');
+
+    if (!assignmentUser) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Assigned user not found or inactive'
+      });
+    }
     
     // Check if enrollment already exists
-    const existingEnrollment = await Enrollment.findOne({ providerId, payerId });
+    const existingEnrollmentQuery = resolvedProviderId
+      ? {
+          providerId: resolvedProviderId,
+          insuranceService: normalizedInsuranceService,
+        }
+      : {
+          providerId: null,
+          insuranceService: normalizedInsuranceService,
+          'enrollmentProfile.npi': normalizedEnrollmentNpi,
+        };
+
+    const existingEnrollment = await Enrollment.findOne(existingEnrollmentQuery);
     
     if (existingEnrollment) {
       return res.status(400).json({
         status: 'error',
-        message: 'Enrollment already exists for this provider and payer'
+        message: 'Enrollment already exists for this provider/enrollment profile and insurance service'
       });
     }
     
     // Create enrollment
     const enrollment = await Enrollment.create({
-      providerId,
-      payerId,
+      providerId: resolvedProviderId,
+      insuranceService: normalizedInsuranceService,
+      enrollmentProfile,
       priority: priority || 'medium',
-      assignedTo: assignedTo || req.user._id,
+      assignedTo: assignmentUser._id,
       createdBy: req.user._id
     });
     
@@ -166,6 +312,13 @@ exports.createEnrollment = async (req, res) => {
       eventType: 'status_change',
       eventDescription: 'Enrollment created',
       performedBy: req.user._id
+    });
+
+    await enrollment.addTimelineEvent({
+      eventType: 'assignment',
+      eventDescription: `Enrollment assigned to ${assignmentUser.fullName}`,
+      performedBy: req.user._id,
+      metadata: { assignedTo: assignmentUser._id }
     });
     
     // Add initial note if provided
@@ -178,7 +331,14 @@ exports.createEnrollment = async (req, res) => {
     }
     
     // Populate before sending response
-    await enrollment.populate('providerId payerId assignedTo createdBy');
+    await enrollment.populate('providerId assignedTo createdBy');
+
+    await notifyEnrollmentAssignee({
+      enrollment,
+      recipientUserId: assignmentUser._id,
+      actorUserId: req.user._id,
+      provider: enrollment.providerId,
+    });
     
     res.status(201).json({
       status: 'success',
@@ -207,11 +367,45 @@ exports.updateEnrollment = async (req, res) => {
         message: 'Enrollment not found'
       });
     }
+
+    if (!isAdminUser(req.user) && !isAssignedEnrollmentUser(enrollment, req.user._id)) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'You can only update enrollments assigned to you'
+      });
+    }
     
     const oldStatus = enrollment.status;
+    const previousAssignedTo = enrollment.assignedTo ? String(enrollment.assignedTo) : '';
+    const updatePayload = { ...req.body };
+    let assignmentUser = null;
+
+    if (Object.prototype.hasOwnProperty.call(updatePayload, 'assignedTo')) {
+      if (!isAdminUser(req.user)) {
+        return res.status(403).json({
+          status: 'error',
+          message: 'Only admin can reassign enrollments'
+        });
+      }
+
+      const requestedAssigneeId = String(updatePayload.assignedTo || '').trim();
+
+      if (!requestedAssigneeId) {
+        updatePayload.assignedTo = null;
+      } else {
+        assignmentUser = await User.findOne({ _id: requestedAssigneeId, isActive: true }).select('_id fullName');
+        if (!assignmentUser) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'Assigned user not found or inactive'
+          });
+        }
+        updatePayload.assignedTo = assignmentUser._id;
+      }
+    }
     
     // Update enrollment
-    Object.assign(enrollment, req.body);
+    Object.assign(enrollment, updatePayload);
     await enrollment.save();
     
     // If status changed, add timeline event
@@ -223,8 +417,31 @@ exports.updateEnrollment = async (req, res) => {
         metadata: { oldStatus, newStatus: req.body.status }
       });
     }
+
+    const currentAssignedTo = enrollment.assignedTo ? String(enrollment.assignedTo) : '';
+    if (Object.prototype.hasOwnProperty.call(updatePayload, 'assignedTo') && previousAssignedTo !== currentAssignedTo) {
+      const assignmentLabel = assignmentUser?.fullName || 'Unassigned';
+      await enrollment.addTimelineEvent({
+        eventType: 'assignment',
+        eventDescription: `Enrollment reassigned to ${assignmentLabel}`,
+        performedBy: req.user._id,
+        metadata: {
+          previousAssignedTo: previousAssignedTo || null,
+          currentAssignedTo: currentAssignedTo || null,
+        }
+      });
+    }
     
-    await enrollment.populate('providerId payerId assignedTo');
+    await enrollment.populate('providerId assignedTo');
+
+    if (Object.prototype.hasOwnProperty.call(updatePayload, 'assignedTo') && currentAssignedTo) {
+      await notifyEnrollmentAssignee({
+        enrollment,
+        recipientUserId: currentAssignedTo,
+        actorUserId: req.user._id,
+        provider: enrollment.providerId,
+      });
+    }
     
     res.status(200).json({
       status: 'success',
@@ -325,7 +542,7 @@ exports.updateEnrollmentStatus = async (req, res) => {
       });
     }
     
-    await enrollment.populate('providerId payerId assignedTo');
+    await enrollment.populate('providerId assignedTo');
     
     res.status(200).json({
       status: 'success',
@@ -354,6 +571,13 @@ exports.addNote = async (req, res) => {
       return res.status(404).json({
         status: 'error',
         message: 'Enrollment not found'
+      });
+    }
+
+    if (!isAdminUser(req.user) && !isAssignedEnrollmentUser(enrollment, req.user._id)) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'You can only add notes to enrollments assigned to you'
       });
     }
     
@@ -402,6 +626,13 @@ exports.getEnrollmentTimeline = async (req, res) => {
         message: 'Enrollment not found'
       });
     }
+
+    if (!isAdminUser(req.user) && !isAssignedEnrollmentUser(enrollment, req.user._id)) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'You can only access timeline for enrollments assigned to you'
+      });
+    }
     
     res.status(200).json({
       status: 'success',
@@ -427,6 +658,13 @@ exports.calculateProgress = async (req, res) => {
       return res.status(404).json({
         status: 'error',
         message: 'Enrollment not found'
+      });
+    }
+
+    if (!isAdminUser(req.user) && !isAssignedEnrollmentUser(enrollment, req.user._id)) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'You can only calculate progress for enrollments assigned to you'
       });
     }
     
@@ -465,9 +703,13 @@ exports.getEnrollmentsByStatus = async (req, res) => {
     const kanbanData = {};
     
     for (const status of statuses) {
-      const enrollments = await Enrollment.find({ status })
+      const query = { status };
+      if (!isAdminUser(req.user)) {
+        query.assignedTo = req.user._id;
+      }
+
+      const enrollments = await Enrollment.find(query)
         .populate('providerId', 'firstName lastName npi')
-        .populate('payerId', 'payerName')
         .populate('assignedTo', 'fullName')
         .sort({ priority: -1, createdAt: -1 });
       

@@ -92,6 +92,10 @@ export default function Header({ onMenuToggle }: HeaderProps) {
       return `/documents/${entityId}/submission`;
     }
 
+    if (entityType === 'enrollment') {
+      return '/enrollments';
+    }
+
     return '/documents';
   };
 

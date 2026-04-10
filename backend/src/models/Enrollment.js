@@ -5,12 +5,13 @@ const enrollmentSchema = new mongoose.Schema({
   providerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Provider',
-    required: [true, 'Provider is required']
+    required: false,
+    default: null,
   },
-  payerId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Payer',
-    required: [true, 'Payer is required']
+  insuranceService: {
+    type: String,
+    required: [true, 'Insurance service is required'],
+    trim: true
   },
   status: {
     type: String,
@@ -63,6 +64,10 @@ const enrollmentSchema = new mongoose.Schema({
     trim: true,
     sparse: true // Allow null values but unique when exists
   },
+  enrollmentProfile: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
   assignedTo: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -77,6 +82,7 @@ const enrollmentSchema = new mongoose.Schema({
         'document_approved',
         'document_rejected',
         'note_added',
+        'assignment',
         'follow_up',
         'submission',
         'approval',
@@ -109,7 +115,7 @@ const enrollmentSchema = new mongoose.Schema({
     },
     noteType: {
       type: String,
-      enum: ['internal', 'client_communication', 'payer_communication'],
+      enum: ['internal', 'client_communication'],
       default: 'internal'
     },
     createdBy: {
@@ -143,8 +149,28 @@ const enrollmentSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Compound index to ensure one enrollment per provider-payer combination
-enrollmentSchema.index({ providerId: 1, payerId: 1 }, { unique: true });
+// Unique only for linked providers (providerId exists)
+enrollmentSchema.index(
+  { providerId: 1, insuranceService: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { providerId: { $type: 'objectId' } },
+    name: 'providerId_1_insuranceService_1_partial',
+  }
+);
+
+// Unique for enrollment-only records (no provider link) by enrollment profile NPI + insurance.
+enrollmentSchema.index(
+  { 'enrollmentProfile.npi': 1, insuranceService: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      providerId: null,
+      'enrollmentProfile.npi': { $type: 'string', $ne: '' },
+    },
+    name: 'enrollmentProfile_npi_1_insuranceService_1_partial',
+  }
+);
 
 // Index for queries
 enrollmentSchema.index({ status: 1 });
@@ -176,25 +202,15 @@ enrollmentSchema.methods.addNote = function(noteData) {
 // Method to update progress percentage
 enrollmentSchema.methods.calculateProgress = async function() {
   const Document = mongoose.model('Document');
-  
-  // Get total required documents for this payer
-  const Payer = mongoose.model('Payer');
-  const payer = await Payer.findById(this.payerId);
-  
-  if (!payer || !payer.requiredDocuments || payer.requiredDocuments.length === 0) {
-    this.progressPercentage = 0;
-    return this.save();
-  }
-  
-  const totalRequired = payer.requiredDocuments.filter(doc => doc.isMandatory).length;
-  
+
   // Get approved documents for this enrollment
   const approvedDocs = await Document.countDocuments({
     enrollmentId: this._id,
     status: 'approved'
   });
-  
-  this.progressPercentage = Math.round((approvedDocs / totalRequired) * 100);
+
+  // Without service-specific templates, treat at least one approved document as complete for progress KPI.
+  this.progressPercentage = approvedDocs > 0 ? 100 : 0;
   return this.save();
 };
 

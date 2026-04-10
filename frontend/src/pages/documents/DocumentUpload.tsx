@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { providerService } from '../../services/providerService';
 import { documentService } from '../../services/documentService';
+import { enrollmentService } from '../../services/enrollmentService';
+import { useAuthStore } from '../../store/authStore';
 
 type ProviderItem = {
   _id: string;
@@ -26,6 +28,21 @@ type InsuranceSelection = {
   clientId: string;
   clientName: string;
   insurance: string;
+};
+
+type AssignedEnrollmentOption = {
+  _id: string;
+  insuranceService: string;
+  providerId?: {
+    _id?: string;
+    firstName?: string;
+    lastName?: string;
+    npi?: string;
+    clientName?: string;
+    clientId?: {
+      practiceName?: string;
+    } | string;
+  } | string;
 };
 
 type EnrollmentFormData = {
@@ -154,8 +171,13 @@ const documentLabelMap: Record<keyof EnrollmentFormData['documents'], string> = 
 
 export default function DocumentUpload() {
 	const [searchParams] = useSearchParams();
+  const user = useAuthStore((state) => state.user);
+  const isAdmin = user?.role === 'admin';
   const [providers, setProviders] = useState<ProviderItem[]>([]);
   const [loadingProviders, setLoadingProviders] = useState(true);
+  const [assignedEnrollments, setAssignedEnrollments] = useState<AssignedEnrollmentOption[]>([]);
+  const [loadingAssignedEnrollments, setLoadingAssignedEnrollments] = useState(true);
+  const [selectedEnrollmentId, setSelectedEnrollmentId] = useState('');
   const [selectedIntakeOption, setSelectedIntakeOption] = useState<IntakeOption>('');
   const [selectedInsuranceKeys, setSelectedInsuranceKeys] = useState<string[]>([]);
   const [formData, setFormData] = useState<EnrollmentFormData>(initialFormData);
@@ -167,7 +189,43 @@ export default function DocumentUpload() {
   const getInsuranceKey = (clientId: string, insurance: string) => `${clientId}::${insurance}`;
 
   useEffect(() => {
+    if (!isAdmin && !selectedIntakeOption) {
+      setSelectedIntakeOption('individual');
+    }
+  }, [isAdmin, selectedIntakeOption]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      setLoadingAssignedEnrollments(false);
+      return;
+    }
+
+    const loadAssignedEnrollments = async () => {
+      try {
+        const response = await enrollmentService.getEnrollments(1, 300);
+        const items = (response.items || []) as unknown as AssignedEnrollmentOption[];
+        setAssignedEnrollments(items);
+
+        if (items.length > 0) {
+          setSelectedEnrollmentId((prev) => prev || items[0]._id);
+        }
+      } catch (err: any) {
+        setError(err.response?.data?.message || 'Failed to load assigned enrollments');
+      } finally {
+        setLoadingAssignedEnrollments(false);
+      }
+    };
+
+    loadAssignedEnrollments();
+  }, [isAdmin]);
+
+  useEffect(() => {
     const loadProviders = async () => {
+      if (!isAdmin) {
+        setLoadingProviders(false);
+        return;
+      }
+
       try {
         const data = await providerService.getProviders(1, 300);
         setProviders((data.items || []) as ProviderItem[]);
@@ -179,7 +237,7 @@ export default function DocumentUpload() {
     };
 
     loadProviders();
-  }, []);
+  }, [isAdmin]);
 
   const clientOptions = useMemo<ClientOption[]>(() => {
     const map = new Map<string, string>();
@@ -262,7 +320,14 @@ export default function DocumentUpload() {
     hasAppliedPrefill.current = true;
   }, [loadingProviders, providers, searchParams]);
 
-  const checklistVisible = Boolean(selectedIntakeOption && selectedInsuranceKeys.length > 0);
+  const selectedAssignedEnrollment = useMemo(
+    () => assignedEnrollments.find((entry) => entry._id === selectedEnrollmentId) || null,
+    [assignedEnrollments, selectedEnrollmentId]
+  );
+
+  const checklistVisible = isAdmin
+    ? Boolean(selectedIntakeOption && selectedInsuranceKeys.length > 0)
+    : Boolean(selectedEnrollmentId);
 
   const uploadedFilesCount = useMemo(
     () => Object.values(formData.documents).filter(Boolean).length,
@@ -325,8 +390,13 @@ export default function DocumentUpload() {
     setError(null);
     setSuccess(null);
 
-    if (!selectedIntakeOption || selectedInsuranceSelections.length === 0) {
-      setError('Please complete Step 1 and Step 2 first');
+    if (isAdmin) {
+      if (!selectedIntakeOption || selectedInsuranceSelections.length === 0) {
+        setError('Please complete Step 1 and Step 2 first');
+        return;
+      }
+    } else if (!selectedEnrollmentId) {
+      setError('Please select an assigned enrollment first');
       return;
     }
 
@@ -342,33 +412,70 @@ export default function DocumentUpload() {
     try {
       const batchSubmissionId = `sub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-      // Save once per uploaded file, and keep all selected insurances in onboarding payload.
-      const firstSelection = selectedInsuranceSelections[0];
-      const firstClientRow = clientInsuranceRows.find((row) => row.clientId === firstSelection.clientId);
-      const firstProviderIds = firstClientRow?.insuranceProviderMap.get(firstSelection.insurance) || [];
-      const primaryProviderId = firstProviderIds[0];
+      let resolvedProviderId = '';
+      let resolvedEnrollmentId: string | undefined;
+      let resolvedInsuranceService = '';
+      let resolvedClientName = '';
 
-      if (!primaryProviderId) {
-        throw new Error('No provider found for selected insurance set');
+      if (isAdmin) {
+        // Save once per uploaded file, and keep all selected insurances in onboarding payload.
+        const firstSelection = selectedInsuranceSelections[0];
+        const firstClientRow = clientInsuranceRows.find((row) => row.clientId === firstSelection.clientId);
+        const firstProviderIds = firstClientRow?.insuranceProviderMap.get(firstSelection.insurance) || [];
+        const primaryProviderId = firstProviderIds[0];
+
+        if (!primaryProviderId) {
+          throw new Error('No provider found for selected insurance set');
+        }
+
+        resolvedProviderId = primaryProviderId;
+        resolvedInsuranceService = firstSelection.insurance;
+        resolvedClientName = firstSelection.clientName;
+      } else {
+        if (!selectedAssignedEnrollment) {
+          throw new Error('Assigned enrollment not found');
+        }
+
+        const provider = selectedAssignedEnrollment.providerId;
+        const providerId = typeof provider === 'string' ? provider : String(provider?._id || '');
+
+        if (!providerId) {
+          throw new Error('Assigned enrollment provider is missing');
+        }
+
+        resolvedProviderId = providerId;
+        resolvedEnrollmentId = selectedAssignedEnrollment._id;
+        resolvedInsuranceService = String(selectedAssignedEnrollment.insuranceService || '').trim();
+
+        if (typeof provider === 'object' && provider) {
+          if (provider.clientId && typeof provider.clientId === 'object') {
+            resolvedClientName = String(provider.clientId.practiceName || '').trim();
+          }
+          if (!resolvedClientName) {
+            resolvedClientName = String(provider.clientName || '').trim();
+          }
+        }
       }
 
       for (const [key, file] of filesToUpload) {
         const documentLabel = documentLabelMap[key];
         await documentService.uploadDocument({
-          providerId: primaryProviderId,
+          providerId: resolvedProviderId,
+          enrollmentId: resolvedEnrollmentId,
           submissionId: batchSubmissionId,
           documentType: documentTypeMap[key],
           file,
           notes: formData.notes
             ? `${documentLabel}\n${formData.notes}`
             : documentLabel,
-          clientName: firstSelection.clientName,
-          insuranceService: firstSelection.insurance,
+          clientName: resolvedClientName,
+          insuranceService: resolvedInsuranceService,
           onboardingData: {
             ...formData,
             batchSubmissionId,
             intakeOption: selectedIntakeOption,
             selectedInsuranceSelections,
+            assignedEnrollmentId: resolvedEnrollmentId || null,
           },
         });
       }
@@ -394,6 +501,7 @@ export default function DocumentUpload() {
       {success && <p className="text-sm text-emerald-700 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">{success}</p>}
 
       <form onSubmit={handleSubmit} className="space-y-5">
+        {isAdmin && (
         <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
           <div className="flex items-center gap-2">
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">1</span>
@@ -424,15 +532,17 @@ export default function DocumentUpload() {
           </div>
           <p className="text-xs text-gray-500">Checklist style with single selection enabled.</p>
         </section>
+        )}
 
         <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
           <div className="flex items-center gap-2">
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">2</span>
-            <h2 className="font-semibold text-gray-900">Select Insurance Services by Client</h2>
+            <h2 className="font-semibold text-gray-900">{isAdmin ? 'Select Insurance Services by Client' : 'Select Assigned Enrollment'}</h2>
           </div>
-          {loadingProviders ? (
-            <p className="text-sm text-gray-600">Loading clients and insurance services...</p>
-          ) : (
+          {isAdmin ? (
+            loadingProviders ? (
+              <p className="text-sm text-gray-600">Loading clients and insurance services...</p>
+            ) : (
             <div className="border border-slate-200 rounded-xl overflow-hidden">
               <table className="min-w-full text-sm">
                 <thead className="bg-slate-50/90">
@@ -477,8 +587,46 @@ export default function DocumentUpload() {
                 </tbody>
               </table>
             </div>
+            )
+          ) : loadingAssignedEnrollments ? (
+            <p className="text-sm text-gray-600">Loading assigned enrollments...</p>
+          ) : assignedEnrollments.length === 0 ? (
+            <p className="text-sm text-amber-700 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">No enrollments are assigned to you yet. Ask admin to assign an enrollment first.</p>
+          ) : (
+            <div className="space-y-2">
+              {assignedEnrollments.map((entry) => {
+                const provider = entry.providerId;
+                const providerName = typeof provider === 'object' && provider
+                  ? `${provider.firstName || ''} ${provider.lastName || ''}`.trim() || provider.npi || 'Provider'
+                  : 'Provider';
+
+                return (
+                  <label
+                    key={entry._id}
+                    className={`flex items-center justify-between gap-3 border rounded-xl px-3 py-2 cursor-pointer ${selectedEnrollmentId === entry._id ? 'border-primary-500 bg-primary-50 shadow-sm' : 'border-slate-300 bg-white'}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate">{providerName}</p>
+                      <p className="text-xs text-slate-600 truncate">{entry.insuranceService}</p>
+                    </div>
+                    <input
+                      type="radio"
+                      name="assignedEnrollment"
+                      checked={selectedEnrollmentId === entry._id}
+                      onChange={() => setSelectedEnrollmentId(entry._id)}
+                      className="w-4 h-4"
+                      disabled={saving}
+                    />
+                  </label>
+                );
+              })}
+            </div>
           )}
-          <p className="text-xs text-gray-500">Select as many insurances as needed across all client rows.</p>
+          <p className="text-xs text-gray-500">
+            {isAdmin
+              ? 'Select as many insurances as needed across all client rows.'
+              : 'Upload will be allowed only for the enrollment selected above.'}
+          </p>
         </section>
 
         {checklistVisible && (
@@ -607,7 +755,11 @@ export default function DocumentUpload() {
               <p className="text-sm text-slate-600">Files selected: {uploadedFilesCount}</p>
               <button
                 type="submit"
-                disabled={saving || uploadedFilesCount === 0 || selectedInsuranceKeys.length === 0 || !selectedIntakeOption}
+                disabled={
+                  saving
+                  || uploadedFilesCount === 0
+                  || (isAdmin ? (selectedInsuranceKeys.length === 0 || !selectedIntakeOption) : !selectedEnrollmentId)
+                }
                 className="px-4 py-2 rounded-xl bg-primary-600 text-white shadow-sm shadow-primary-300/40 hover:bg-primary-700 disabled:opacity-50"
               >
                 {saving ? 'Uploading...' : 'Submit Enrollment Documents'}

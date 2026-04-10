@@ -1,7 +1,7 @@
 const Notification = require('../models/Notification');
 const User = require('../models/User');
 
-const createNotification = async ({ recipient, actor, type, title, message, entityId, metadata = {} }) => {
+const createNotification = async ({ recipient, actor, type, title, message, entityType = 'document', entityId, metadata = {} }) => {
   if (!recipient || !actor || !entityId) {
     return null;
   }
@@ -17,6 +17,7 @@ const createNotification = async ({ recipient, actor, type, title, message, enti
       type,
       title,
       message,
+      entityType,
       entityId,
       metadata,
     });
@@ -26,7 +27,7 @@ const createNotification = async ({ recipient, actor, type, title, message, enti
   }
 };
 
-const notifyAdmins = async ({ actor, type, title, message, entityId, metadata = {} }) => {
+const notifyAdmins = async ({ actor, type, title, message, entityType = 'document', entityId, metadata = {} }) => {
   try {
     const admins = await User.find({ role: 'admin', isActive: true }).select('_id');
     if (!admins.length) {
@@ -40,6 +41,7 @@ const notifyAdmins = async ({ actor, type, title, message, entityId, metadata = 
         type,
         title,
         message,
+        entityType,
         entityId,
         metadata,
       }))

@@ -5,7 +5,12 @@ const providerSchema = new mongoose.Schema({
   clientId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Client',
-    required: [true, 'Client is required']
+    default: null
+  },
+  clientName: {
+    type: String,
+    required: [true, 'Client name is required'],
+    trim: true
   },
   firstName: {
     type: String,
@@ -27,6 +32,11 @@ const providerSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Specialization is required'],
     trim: true
+  },
+  providerCategory: {
+    type: String,
+    enum: ['Individual', 'Group', 'Facility', 'Multiple'],
+    default: 'Individual'
   },
   licenseNumber: {
     type: String,

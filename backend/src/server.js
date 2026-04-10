@@ -14,21 +14,64 @@ const authRoutes = require('./routes/authRoutes');
 const providerRoutes = require('./routes/providerRoutes');
 const enrollmentRoutes = require('./routes/enrollmentRoutes');
 const documentRoutes = require('./routes/documentRoutes');
-const payerRoutes = require('./routes/payerRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const reminderRoutes = require('./routes/reminderRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
-const { checkDriveAccess } = require('./services/googleDriveService');
-
+const googleDriveOAuthRoutes = require('./routes/googleDriveOAuthRoutes');
+const { checkDriveAccess } = require('./services/googleDriveOAuthService');
 // Import cron jobs
 const { startReminderCron } = require('./services/cronService');
 const seedAdmin = require('./utils/seedAdmin');
 
+const migrateEnrollmentIndexes = async () => {
+  try {
+    const collection = mongoose.connection.collection('enrollments');
+    const indexes = await collection.indexes();
+
+    const dropIfExists = async (indexName) => {
+      const exists = indexes.some((entry) => entry.name === indexName);
+      if (!exists) return;
+      await collection.dropIndex(indexName);
+      console.log(`🧹 Dropped legacy enrollment index: ${indexName}`);
+    };
+
+    // Remove stale indexes from payer-era and pre-separation uniqueness rules.
+    await dropIfExists('providerId_1_payerId_1');
+    await dropIfExists('providerId_1_insuranceService_1');
+
+    await collection.createIndex(
+      { providerId: 1, insuranceService: 1 },
+      {
+        unique: true,
+        partialFilterExpression: { providerId: { $type: 'objectId' } },
+        name: 'providerId_1_insuranceService_1_partial',
+      }
+    );
+
+    await collection.createIndex(
+      { 'enrollmentProfile.npi': 1, insuranceService: 1 },
+      {
+        unique: true,
+        partialFilterExpression: {
+          providerId: null,
+          'enrollmentProfile.npi': { $type: 'string', $ne: '' },
+        },
+        name: 'enrollmentProfile_npi_1_insuranceService_1_partial',
+      }
+    );
+
+    console.log('✅ Enrollment indexes verified/migrated');
+  } catch (error) {
+    console.warn('⚠️ Enrollment index migration warning:', error.message);
+  }
+};
+
 const app = express();
 
-const logStorageHealth = async () => {
-  const credentialsPath = process.env.GOOGLE_CREDENTIALS_PATH || './credentials/google-credentials.json';
+// Avoid 304 responses for API XHR calls that can break client-side data loading flows.
+app.set('etag', false);
 
+const logStorageHealth = async () => {
   try {
     const driveOk = await checkDriveAccess();
 
@@ -38,8 +81,8 @@ const logStorageHealth = async () => {
     }
 
     console.warn('⚠️ Google Drive storage check failed.');
-    console.warn(`   Expected credentials path: ${credentialsPath}`);
-    console.warn('   Fix: add a valid service account JSON and share the Drive folder with that service account email.');
+    console.warn('   Fix: connect an admin Google account via OAuth at /api/google-drive/connect.');
+    console.warn('   Also ensure GOOGLE_OAUTH_REDIRECT_URI matches your Google Cloud authorized redirect URI.');
   } catch (error) {
     console.warn('⚠️ Google Drive storage check errored at startup:', error.message);
   }
@@ -88,10 +131,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/providers', providerRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/documents', documentRoutes);
-app.use('/api/payers', payerRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reminders', reminderRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/google-drive-oauth', googleDriveOAuthRoutes);
+app.use('/api/google-drive', googleDriveOAuthRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -118,6 +162,8 @@ const connectDB = async () => {
     const conn = await mongoose.connect(process.env.MONGODB_URI);
     
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+
+    await migrateEnrollmentIndexes();
     
     // Seed admin user if configured
     await seedAdmin();
@@ -133,17 +179,35 @@ const connectDB = async () => {
 };
 
 // Start server
-const PORT = process.env.PORT || 5000;
+const DEFAULT_PORT = parseInt(process.env.PORT || '5000', 10);
 
-connectDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`\n🚀 Server running on port ${PORT}`);
+const startServer = (port, retriesLeft = 10) => {
+  const server = app.listen(port, () => {
+    console.log(`\n🚀 Server running on port ${port}`);
     console.log(`📍 Environment: ${process.env.NODE_ENV}`);
-    console.log(`🌐 API URL: http://localhost:${PORT}`);
-    console.log(`💚 Health Check: http://localhost:${PORT}/health`);
+    console.log(`🌐 API URL: http://localhost:${port}`);
+    console.log(`💚 Health Check: http://localhost:${port}/health`);
     logStorageHealth();
     console.log('');
   });
+
+  server.on('error', (error) => {
+    const canRetryInDev = process.env.NODE_ENV !== 'production' && retriesLeft > 0;
+
+    if (error.code === 'EADDRINUSE' && canRetryInDev) {
+      const nextPort = port + 1;
+      console.warn(`⚠️ Port ${port} is in use. Retrying on port ${nextPort}...`);
+      startServer(nextPort, retriesLeft - 1);
+      return;
+    }
+
+    console.error('❌ Server startup error:', error.message);
+    process.exit(1);
+  });
+};
+
+connectDB().then(() => {
+  startServer(DEFAULT_PORT);
 });
 
 // Handle unhandled promise rejections

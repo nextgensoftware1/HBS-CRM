@@ -46,6 +46,11 @@ export const enrollmentService = {
     return response.data.data.enrollment;
   },
 
+  // Delete enrollment
+  async deleteEnrollment(id: string): Promise<void> {
+    await api.delete(`/enrollments/${id}`);
+  },
+
   // Get Kanban board data
   async getKanbanBoard(filters = {}): Promise<any> {
     const response = await api.get('/enrollments/kanban/board', { params: filters });

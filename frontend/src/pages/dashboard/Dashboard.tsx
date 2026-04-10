@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { dashboardService } from '../../services/dashboardService';
+import { authService } from '../../services/authService';
+import { useAuthStore } from '../../store/authStore';
 import { DashboardStats } from '../../types';
 
 import Card from '../../components/common/Card';
@@ -17,17 +19,24 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 export default function Dashboard() {
+	const currentUser = useAuthStore((state) => state.user);
 	const [stats, setStats] = useState<DashboardStats | null>(null);
+	const [userAccessCount, setUserAccessCount] = useState<number>(0);
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
 		loadDashboard();
-	}, []);
+	}, [currentUser?.role]);
 
 	const loadDashboard = async () => {
 		try {
 			const data = await dashboardService.getOverview();
 			setStats(data);
+
+			if (currentUser?.role === 'admin') {
+				const users = await authService.getAllUsers();
+				setUserAccessCount(Array.isArray(users) ? users.length : 0);
+			}
 		} catch (error) {
 			console.error('Failed to load dashboard:', error);
 		} finally {
@@ -79,7 +88,7 @@ export default function Dashboard() {
 					<div className="flex items-center justify-between">
 						<div>
 							<p className="text-sm font-medium text-gray-600">User Access Records</p>
-							<p className="text-3xl font-bold text-gray-900 mt-2">{stats.totals.clients}</p>
+							<p className="text-3xl font-bold text-gray-900 mt-2">{currentUser?.role === 'admin' ? userAccessCount : 0}</p>
 						</div>
 						<div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
 							<FiUsers className="w-6 h-6 text-primary-600" />

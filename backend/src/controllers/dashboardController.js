@@ -11,8 +11,8 @@ const Reminder = require('../models/Reminder');
 exports.getOverviewDashboard = async (req, res) => {
   try {
     // Get counts
-    const totalClients = await Client.countDocuments({ status: 'active' });
-    const totalProviders = await Provider.countDocuments({ status: 'active' });
+    const totalClients = await Client.countDocuments();
+    const totalProviders = await Provider.countDocuments();
     const totalEnrollments = await Enrollment.countDocuments();
     const totalDocuments = await Document.countDocuments();
     
@@ -175,7 +175,6 @@ exports.getClientDashboard = async (req, res) => {
       providerId: { $in: providerIds }
     })
       .populate('providerId', 'firstName lastName')
-      .populate('payerId', 'payerName')
       .sort({ createdAt: -1 })
       .limit(5);
     
@@ -227,7 +226,6 @@ exports.getProviderDashboard = async (req, res) => {
     
     // Enrollment stats
     const enrollments = await Enrollment.find({ providerId })
-      .populate('payerId', 'payerName payerType')
       .sort({ createdAt: -1 });
     
     const enrollmentsByStatus = await Enrollment.aggregate([
@@ -360,7 +358,6 @@ exports.getOperationalDashboard = async (req, res) => {
       updatedAt: { $lte: thirtyDaysAgo }
     })
       .populate('providerId', 'firstName lastName')
-      .populate('payerId', 'payerName')
       .populate('assignedTo', 'fullName')
       .sort({ updatedAt: 1 });
     
@@ -398,18 +395,8 @@ exports.getOperationalDashboard = async (req, res) => {
       .limit(20);
     
     // SLA tracking - enrollments over processing time
+    const slaExpectedDays = 30;
     const slaViolations = await Enrollment.aggregate([
-      {
-        $lookup: {
-          from: 'payers',
-          localField: 'payerId',
-          foreignField: '_id',
-          as: 'payer'
-        }
-      },
-      {
-        $unwind: '$payer'
-      },
       {
         $addFields: {
           daysSinceCreation: {
@@ -423,7 +410,7 @@ exports.getOperationalDashboard = async (req, res) => {
       {
         $match: {
           status: { $nin: ['approved', 'rejected'] },
-          $expr: { $gt: ['$daysSinceCreation', '$payer.processingTimeDays'] }
+          $expr: { $gt: ['$daysSinceCreation', slaExpectedDays] }
         }
       },
       {
@@ -442,9 +429,9 @@ exports.getOperationalDashboard = async (req, res) => {
           providerName: {
             $concat: ['$provider.firstName', ' ', '$provider.lastName']
           },
-          payerName: '$payer.payerName',
+          insuranceService: '$insuranceService',
           daysSinceCreation: 1,
-          expectedDays: '$payer.processingTimeDays',
+          expectedDays: { $literal: slaExpectedDays },
           status: 1
         }
       }

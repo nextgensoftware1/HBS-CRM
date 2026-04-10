@@ -100,14 +100,16 @@ const checkMissingDocuments = async () => {
     // Find active enrollments
     const activeEnrollments = await Enrollment.find({
       status: { $in: ['intake', 'document_collection', 'ready_for_submission'] }
-    }).populate('providerId payerId assignedTo');
+    }).populate('providerId assignedTo');
     
     console.log(`Checking ${activeEnrollments.length} active enrollments`);
     
     for (const enrollment of activeEnrollments) {
-      // Get required documents for this payer
-      const requiredDocs = enrollment.payerId.requiredDocuments || [];
-      const mandatoryDocs = requiredDocs.filter(doc => doc.isMandatory);
+      // Use a generic minimum required set when service-specific templates are removed.
+      const mandatoryDocs = [
+        { documentType: 'License' },
+        { documentType: 'W9' },
+      ];
       
       // Get uploaded documents
       const uploadedDocs = await Document.find({
@@ -185,7 +187,7 @@ const checkStuckEnrollments = async () => {
     const stuckEnrollments = await Enrollment.find({
       status: { $nin: ['approved', 'rejected'] },
       updatedAt: { $lte: thirtyDaysAgo }
-    }).populate('providerId payerId assignedTo');
+    }).populate('providerId assignedTo');
     
     console.log(`Found ${stuckEnrollments.length} stuck enrollments`);
     
@@ -208,7 +210,7 @@ const checkStuckEnrollments = async () => {
             providerId: enrollment.providerId._id,
             reminderType: 'enrollment_stuck',
             title: `Enrollment stuck for ${daysSinceUpdate} days`,
-            description: `Enrollment for ${enrollment.providerId.firstName} ${enrollment.providerId.lastName} with ${enrollment.payerId.payerName} has not been updated in ${daysSinceUpdate} days`,
+            description: `Enrollment for ${enrollment.providerId.firstName} ${enrollment.providerId.lastName} (${enrollment.insuranceService || 'Insurance'}) has not been updated in ${daysSinceUpdate} days`,
             dueDate: new Date(),
             priority: 'high',
             assignedTo: enrollment.assignedTo._id,

@@ -4,7 +4,6 @@ require('dotenv').config();
 const User = require('../models/User');
 const Client = require('../models/Client');
 const Provider = require('../models/Provider');
-const Payer = require('../models/Payer');
 const Enrollment = require('../models/Enrollment');
 const Document = require('../models/Document');
 
@@ -54,12 +53,12 @@ const providersData = [
       },
     },
     insurances: [
-      { payer: 'Medicare', status: 'Application Sent', comments: 'Group Application has been submitted.' },
-      { payer: 'Medicaid', status: 'Need to submit', comments: '' },
-      { payer: 'Aetna', status: 'Need to submit', comments: '' },
-      { payer: 'BCBS', status: 'Need to submit', comments: '' },
-      { payer: 'Cigna', status: 'Need to submit', comments: '' },
-      { payer: 'UHC', status: 'Need to submit', comments: '' },
+      { insuranceService: 'Medicare', status: 'Application Sent', comments: 'Group Application has been submitted.' },
+      { insuranceService: 'Medicaid', status: 'Need to submit', comments: '' },
+      { insuranceService: 'Aetna', status: 'Need to submit', comments: '' },
+      { insuranceService: 'BCBS', status: 'Need to submit', comments: '' },
+      { insuranceService: 'Cigna', status: 'Need to submit', comments: '' },
+      { insuranceService: 'UHC', status: 'Need to submit', comments: '' },
     ],
   },
   {
@@ -91,12 +90,12 @@ const providersData = [
       },
     },
     insurances: [
-      { payer: 'Medicare', status: 'Rejection', comments: 'Request was submitted where as it was rejected by provider end on a visit by medicare' },
-      { payer: 'Medicaid', status: 'Need to submit', comments: '' },
-      { payer: 'Aetna', status: 'In-Network', comments: 'Participated' },
-      { payer: 'BCBS', status: 'Need to submit', comments: 'Individual Participating' },
-      { payer: 'Cigna', status: 'In-Network', comments: 'Participated' },
-      { payer: 'UHC', status: 'In-Network', comments: 'Participated' },
+      { insuranceService: 'Medicare', status: 'Rejection', comments: 'Request was submitted where as it was rejected by provider end on a visit by medicare' },
+      { insuranceService: 'Medicaid', status: 'Need to submit', comments: '' },
+      { insuranceService: 'Aetna', status: 'In-Network', comments: 'Participated' },
+      { insuranceService: 'BCBS', status: 'Need to submit', comments: 'Individual Participating' },
+      { insuranceService: 'Cigna', status: 'In-Network', comments: 'Participated' },
+      { insuranceService: 'UHC', status: 'In-Network', comments: 'Participated' },
     ],
   },
   {
@@ -127,13 +126,13 @@ const providersData = [
       },
     },
     insurances: [
-      { payer: 'Aetna', status: 'Application Sent', comments: 'Group application has been sent through portal on 03/30/2026' },
-      { payer: 'BCBS', status: 'Information Required', comments: 'Availity Required' },
-      { payer: 'Cigna', status: 'Application Sent', comments: 'Email Sent on 02/26/2026 with Letter of interest' },
-      { payer: 'UHC', status: 'Need to submit', comments: '' },
-      { payer: 'Molina', status: 'Application Sent', comments: 'Requested submitted for facility on 2/12/2026' },
-      { payer: 'Oscar Health', status: 'Application Sent', comments: 'Requested submitted for facility on 2/12/2026' },
-      { payer: 'Humana', status: 'Information Required', comments: 'Medicaid and Medicare enrollment required first' },
+      { insuranceService: 'Aetna', status: 'Application Sent', comments: 'Group application has been sent through portal on 03/30/2026' },
+      { insuranceService: 'BCBS', status: 'Information Required', comments: 'Availity Required' },
+      { insuranceService: 'Cigna', status: 'Application Sent', comments: 'Email Sent on 02/26/2026 with Letter of interest' },
+      { insuranceService: 'UHC', status: 'Need to submit', comments: '' },
+      { insuranceService: 'Molina', status: 'Application Sent', comments: 'Requested submitted for facility on 2/12/2026' },
+      { insuranceService: 'Oscar Health', status: 'Application Sent', comments: 'Requested submitted for facility on 2/12/2026' },
+      { insuranceService: 'Humana', status: 'Information Required', comments: 'Medicaid and Medicare enrollment required first' },
     ],
   },
   {
@@ -167,13 +166,13 @@ const providersData = [
       },
     },
     insurances: [
-      { payer: 'Aetna', status: 'Application Sent', comments: 'Application sent on 03/31/2026 group application ID: 38078402' },
-      { payer: 'BCBS', status: 'Need to submit', comments: '' },
-      { payer: 'Cigna', status: 'Need to submit', comments: '' },
-      { payer: 'UHC', status: 'Need to submit', comments: '' },
-      { payer: 'Molina', status: 'Need to submit', comments: '' },
-      { payer: 'Oscar Health', status: 'Need to submit', comments: '' },
-      { payer: 'Humana', status: 'Need to submit', comments: '' },
+      { insuranceService: 'Aetna', status: 'Application Sent', comments: 'Application sent on 03/31/2026 group application ID: 38078402' },
+      { insuranceService: 'BCBS', status: 'Need to submit', comments: '' },
+      { insuranceService: 'Cigna', status: 'Need to submit', comments: '' },
+      { insuranceService: 'UHC', status: 'Need to submit', comments: '' },
+      { insuranceService: 'Molina', status: 'Need to submit', comments: '' },
+      { insuranceService: 'Oscar Health', status: 'Need to submit', comments: '' },
+      { insuranceService: 'Humana', status: 'Need to submit', comments: '' },
     ],
   },
 ];
@@ -247,6 +246,7 @@ const run = async () => {
       { npi: sheet.provider.individualNpi || sheet.practice.npi },
       {
         clientId: client._id,
+        clientName: sheet.practice.name,
         firstName: nameParts.firstName,
         lastName: nameParts.lastName,
         npi: sheet.provider.individualNpi || sheet.practice.npi,
@@ -261,6 +261,13 @@ const run = async () => {
         ssn: sheet.provider.ssn || null,
         email: sheet.provider.email || sheet.practice.email,
         phone: sheet.provider.phone || sheet.practice.phone,
+        insuranceServices: Array.from(
+          new Set(
+            (sheet.insurances || [])
+              .map((entry) => String(entry.insuranceService || '').trim())
+              .filter(Boolean)
+          )
+        ),
         address: {
           street: sheet.practice.practiceAddress,
           city: '',
@@ -281,29 +288,17 @@ const run = async () => {
     );
 
     for (const item of sheet.insurances) {
-      const payerType = item.payer.toLowerCase().includes('medicare')
-        ? 'Medicare'
-        : item.payer.toLowerCase().includes('medicaid')
-          ? 'Medicaid'
-          : 'Commercial';
+      const insuranceService = String(item.insuranceService || '').trim();
 
-      const payer = await Payer.findOneAndUpdate(
-        { payerName: item.payer },
-        {
-          payerName: item.payer,
-          payerType,
-          processingTimeDays: 90,
-          requiredDocuments: [{ documentType: 'CAQH', isMandatory: false }],
-          createdBy: adminUser._id,
-        },
-        { new: true, upsert: true, setDefaultsOnInsert: true }
-      );
+      if (!insuranceService) {
+        continue;
+      }
 
       const enrollment = await Enrollment.findOneAndUpdate(
-        { providerId: provider._id, payerId: payer._id },
+        { providerId: provider._id, insuranceService },
         {
           providerId: provider._id,
-          payerId: payer._id,
+          insuranceService,
           status: mapEnrollmentStatus(item.status),
           currentStage: item.status,
           priority: 'medium',
@@ -343,3 +338,4 @@ run().catch(async (error) => {
   }
   process.exit(1);
 });
+

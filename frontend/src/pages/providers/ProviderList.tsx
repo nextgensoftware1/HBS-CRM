@@ -530,9 +530,13 @@ type ProviderRow = {
 	lastName: string;
 	npi: string;
 	specialization: string;
-	clientId?: { practiceName?: string } | string;
+	providerCategory?: 'Individual' | 'Group' | 'Facility' | 'Multiple';
+	clientName?: string;
+	clientId?: { practiceName?: string } | string | null;
 	insuranceServices?: string[];
 };
+
+const PROVIDER_CATEGORIES = ['Individual', 'Group', 'Facility', 'Multiple'] as const;
 
 export default function ProviderList() {
 	const user = useAuthStore((state) => state.user);
@@ -540,7 +544,6 @@ export default function ProviderList() {
 	const canDeleteProvider = user?.role === 'admin';
 	const isNormalUserView = user?.role !== 'admin';
 	const [providers, setProviders] = useState<ProviderRow[]>([]);
-	const [clients, setClients] = useState<Array<{ _id: string; practiceName: string }>>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -555,6 +558,7 @@ export default function ProviderList() {
 		lastName: '',
 		npi: '',
 		specialization: '',
+		providerCategory: 'Individual' as (typeof PROVIDER_CATEGORIES)[number],
 		dateOfBirth: '',
 		ssn: '',
 		caqhId: '',
@@ -576,15 +580,10 @@ export default function ProviderList() {
 	useEffect(() => {
 		const loadProviders = async () => {
 			try {
-				const [providerData, clientData] = await Promise.all([
-					providerService.getProviders(1, 50),
-					providerService.getClientOptions(),
-				]);
-				setProviders(providerData.items);
-				setClients(clientData.map((client: any) => ({
-					_id: client._id,
-					practiceName: client.practiceName,
-				})));
+				const providersResult = await providerService.getProviders(1, 50);
+
+				setProviders(providersResult.items);
+				setError(null);
 			} catch (err: any) {
 				setError(err.response?.data?.message || 'Failed to load providers');
 			} finally {
@@ -639,27 +638,17 @@ export default function ProviderList() {
 
 		setCreatingProvider(true);
 		try {
-			const typedClientName = createForm.clientName.trim().toLowerCase();
-			const matchedClient = clients.find(
-				(client) => client.practiceName.trim().toLowerCase() === typedClientName
-			);
-
-			if (!matchedClient) {
-				setError('Enter a valid client name from the existing client list');
-				setCreatingProvider(false);
-				return;
-			}
-
 			const insuranceServices = createForm.insuranceServicesList
 				.map((value) => value.trim())
 				.filter(Boolean);
 
 			const created = await providerService.createProvider({
-				clientId: matchedClient._id,
+				clientName: createForm.clientName.trim(),
 				firstName: createForm.firstName.trim(),
 				lastName: createForm.lastName.trim(),
 				npi: createForm.npi.trim(),
 				specialization: createForm.specialization.trim(),
+				providerCategory: createForm.providerCategory,
 				dateOfBirth: createForm.dateOfBirth || null,
 				ssn: createForm.ssn.trim() || null,
 				caqhId: createForm.caqhId.trim() || null,
@@ -688,6 +677,7 @@ export default function ProviderList() {
 				lastName: '',
 				npi: '',
 				specialization: '',
+				providerCategory: 'Individual',
 				dateOfBirth: '',
 				ssn: '',
 				caqhId: '',
@@ -757,8 +747,18 @@ export default function ProviderList() {
 	const getAvatarColor = (name: string) =>
 		avatarColors[name.charCodeAt(0) % avatarColors.length];
 
+	const getClientObject = (provider: ProviderRow): { practiceName?: string } | null => {
+		if (!provider.clientId || typeof provider.clientId !== 'object') {
+			return null;
+		}
+
+		return provider.clientId;
+	};
+
 	const getPracticeName = (provider: ProviderRow) =>
-		typeof provider.clientId === 'object' ? provider.clientId.practiceName || 'N/A' : 'N/A';
+		getClientObject(provider)
+			? getClientObject(provider)?.practiceName || provider.clientName || 'N/A'
+			: provider.clientName || 'N/A';
 
 	return (
 		<div className="min-h-screen bg-gray-50/60">
@@ -828,7 +828,7 @@ export default function ProviderList() {
 				)}
 
 				{/* ── Table Card ── */}
-				{!loading && !error && (
+				{!loading && (
 					<>
 						<div className="md:hidden space-y-3">
 							{providers.length === 0 ? (
@@ -988,7 +988,7 @@ export default function ProviderList() {
 
 												{/* Client */}
 												<td className="px-5 py-4 text-gray-600">
-													{typeof provider.clientId === 'object' ? (
+													{getClientObject(provider) ? (
 														isNormalUserView ? (
 															<div className="inline-block max-w-full" data-client-dropdown-root="true">
 																<button
@@ -999,7 +999,7 @@ export default function ProviderList() {
 																	<svg className="h-3.5 w-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
 																		<path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
 																	</svg>
-																	<span className="truncate max-w-[18rem]">{provider.clientId.practiceName || 'N/A'}</span>
+																	<span className="truncate max-w-[18rem]">{getClientObject(provider)?.practiceName || provider.clientName || 'N/A'}</span>
 																	<svg className={`h-3 w-3 text-gray-400 transition-transform duration-200 ${expandedClientRowId === provider._id ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
 																		<path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
 																	</svg>
@@ -1032,11 +1032,11 @@ export default function ProviderList() {
 																<svg className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
 																	<path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
 																</svg>
-																{provider.clientId.practiceName || 'N/A'}
+																{getClientObject(provider)?.practiceName || provider.clientName || 'N/A'}
 															</span>
 														)
 													) : (
-														<span className="text-gray-400 text-xs italic">N/A</span>
+														<span className="text-gray-700 text-xs">{provider.clientName || 'N/A'}</span>
 													)}
 												</td>
 
@@ -1127,19 +1127,9 @@ export default function ProviderList() {
 									<label className="mb-1 block text-xs font-medium text-gray-600">Client Name <span className="text-red-500">*</span></label>
 									<input
 										type="text"
-										placeholder="Enter exact client / practice name"
+										placeholder="Enter client / practice name"
 										value={createForm.clientName}
-										onChange={(e) => {
-											const value = e.target.value;
-											const matchedClient = clients.find(
-												(client) => client.practiceName.trim().toLowerCase() === value.trim().toLowerCase()
-											);
-											setCreateForm((prev) => ({
-												...prev,
-												clientName: value,
-												clientId: matchedClient?._id || '',
-											}));
-										}}
+										onChange={(e) => setCreateForm((prev) => ({ ...prev, clientName: e.target.value, clientId: '' }))}
 										className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:border-primary-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 transition-all"
 									/>
 								</div>
@@ -1182,6 +1172,30 @@ export default function ProviderList() {
 										onChange={(e) => setCreateForm((prev) => ({ ...prev, specialization: e.target.value }))}
 										className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:border-primary-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 transition-all"
 									/>
+								</div>
+								<div className="sm:col-span-2">
+									<label className="mb-1 block text-xs font-medium text-gray-600">Provider Category <span className="text-red-500">*</span></label>
+									<div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+										{PROVIDER_CATEGORIES.map((category) => {
+											const checked = createForm.providerCategory === category;
+											return (
+												<label
+													key={category}
+													className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium cursor-pointer transition-all ${checked ? 'border-primary-400 bg-primary-50 text-primary-700' : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-primary-200'}`}
+												>
+													<input
+														type="radio"
+														name="providerCategory"
+														value={category}
+														checked={checked}
+														onChange={() => setCreateForm((prev) => ({ ...prev, providerCategory: category }))}
+														className="h-3.5 w-3.5 text-primary-600 focus:ring-primary-400"
+													/>
+													<span>{category}</span>
+												</label>
+											);
+										})}
+									</div>
 								</div>
 								<div>
 									<label className="mb-1 block text-xs font-medium text-gray-600">Date of Birth</label>

@@ -4,6 +4,20 @@ const Enrollment = require('../models/Enrollment');
 const Document = require('../models/Document');
 const Client = require('../models/Client');
 
+const PROVIDER_CATEGORIES = ['Individual', 'Group', 'Facility', 'Multiple'];
+
+const normalizeProviderCategory = (value) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const matched = PROVIDER_CATEGORIES.find(
+    (category) => category.toLowerCase() === trimmed.toLowerCase()
+  );
+
+  return matched || null;
+};
+
 // @desc    Get all providers
 // @route   GET /api/providers
 // @access  Private
@@ -34,6 +48,28 @@ exports.getAllProviders = async (req, res) => {
     if (specialization) {
       query.specialization = { $regex: specialization, $options: 'i' };
     }
+
+    if (req.user.role !== 'admin') {
+      const assignedProviderIds = Array.isArray(req.user.assignedProviders)
+        ? req.user.assignedProviders.filter(Boolean)
+        : [];
+
+      if (assignedProviderIds.length === 0) {
+        return res.status(200).json({
+          status: 'success',
+          data: {
+            providers: [],
+            pagination: {
+              total: 0,
+              page: parseInt(page, 10),
+              pages: 0,
+            },
+          },
+        });
+      }
+
+      query._id = { $in: assignedProviderIds };
+    }
     
     // Execute query with pagination
     const providers = await Provider.find(query)
@@ -56,11 +92,10 @@ exports.getAllProviders = async (req, res) => {
         });
 
         const enrollments = await Enrollment.find({ providerId: provider._id })
-          .populate('payerId', 'payerName')
-          .select('payerId');
+          .select('insuranceService');
 
         const insuranceFromEnrollments = enrollments
-          .map((entry) => entry.payerId?.payerName)
+          .map((entry) => entry.insuranceService)
           .filter(Boolean);
 
         const insuranceFromProvider = Array.isArray(provider.insuranceServices)
@@ -106,6 +141,19 @@ exports.getAllProviders = async (req, res) => {
 // @access  Private
 exports.getProvider = async (req, res) => {
   try {
+    if (req.user.role !== 'admin') {
+      const assignedProviderIds = Array.isArray(req.user.assignedProviders)
+        ? req.user.assignedProviders.map((id) => String(id))
+        : [];
+
+      if (!assignedProviderIds.includes(String(req.params.id))) {
+        return res.status(403).json({
+          status: 'error',
+          message: 'You can only access your assigned provider',
+        });
+      }
+    }
+
     const provider = await Provider.findById(req.params.id)
       .select('+ssn')
       .populate('clientId')
@@ -120,7 +168,6 @@ exports.getProvider = async (req, res) => {
     
     // Get enrollments for this provider
     const enrollments = await Enrollment.find({ providerId: provider._id })
-      .populate('payerId', 'payerName payerType')
       .sort({ createdAt: -1 });
     
     // Get documents for this provider
@@ -152,10 +199,12 @@ exports.createProvider = async (req, res) => {
   try {
     const {
       clientId,
+      clientName,
       firstName,
       lastName,
       npi,
       specialization,
+      providerCategory,
       licenseNumber,
       licenseState,
       licenseExpiryDate,
@@ -173,6 +222,15 @@ exports.createProvider = async (req, res) => {
       credentialLogins,
       insuranceServices
     } = req.body;
+
+    const normalizedClientName = String(clientName || '').trim();
+
+    if (!normalizedClientName) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Client name is required'
+      });
+    }
     
     // Check if provider already exists
     const existingProvider = await Provider.findOne({ npi });
@@ -183,14 +241,27 @@ exports.createProvider = async (req, res) => {
         message: 'Provider already exists with this NPI'
       });
     }
+
+    const normalizedProviderCategory = providerCategory
+      ? normalizeProviderCategory(providerCategory)
+      : 'Individual';
+
+    if (providerCategory && !normalizedProviderCategory) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Provider category must be one of: Individual, Group, Facility, Multiple'
+      });
+    }
     
     // Create provider
     const provider = await Provider.create({
-      clientId,
+      clientId: clientId || null,
+      clientName: normalizedClientName,
       firstName,
       lastName,
       npi,
       specialization,
+      providerCategory: normalizedProviderCategory,
       licenseNumber,
       licenseState,
       licenseExpiryDate,
@@ -237,6 +308,33 @@ exports.createProvider = async (req, res) => {
 exports.updateProvider = async (req, res) => {
   try {
     const updatePayload = { ...req.body };
+
+    if (Object.prototype.hasOwnProperty.call(updatePayload, 'clientName')) {
+      updatePayload.clientName = String(updatePayload.clientName || '').trim();
+      if (!updatePayload.clientName) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Client name is required'
+        });
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updatePayload, 'clientId') && !updatePayload.clientId) {
+      updatePayload.clientId = null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updatePayload, 'providerCategory')) {
+      const normalizedProviderCategory = normalizeProviderCategory(updatePayload.providerCategory);
+
+      if (!normalizedProviderCategory) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Provider category must be one of: Individual, Group, Facility, Multiple'
+        });
+      }
+
+      updatePayload.providerCategory = normalizedProviderCategory;
+    }
 
     if (Array.isArray(updatePayload.insuranceServices)) {
       updatePayload.insuranceServices = updatePayload.insuranceServices
@@ -382,7 +480,24 @@ exports.getProviderStats = async (req, res) => {
 // @access  Private
 exports.getProvidersByClient = async (req, res) => {
   try {
-    const providers = await Provider.find({ clientId: req.params.clientId })
+    const query = { clientId: req.params.clientId };
+
+    if (req.user.role !== 'admin') {
+      const assignedProviderIds = Array.isArray(req.user.assignedProviders)
+        ? req.user.assignedProviders.filter(Boolean)
+        : [];
+
+      if (assignedProviderIds.length === 0) {
+        return res.status(200).json({
+          status: 'success',
+          data: { providers: [] }
+        });
+      }
+
+      query._id = { $in: assignedProviderIds };
+    }
+
+    const providers = await Provider.find(query)
       .sort({ lastName: 1, firstName: 1 });
     
     res.status(200).json({
@@ -403,6 +518,35 @@ exports.getProvidersByClient = async (req, res) => {
 // @access  Private
 exports.getProviderClientOptions = async (req, res) => {
   try {
+    if (req.user.role !== 'admin') {
+      const assignedProviderIds = Array.isArray(req.user.assignedProviders)
+        ? req.user.assignedProviders.filter(Boolean)
+        : [];
+
+      if (assignedProviderIds.length === 0) {
+        return res.status(200).json({
+          status: 'success',
+          data: { clients: [] },
+        });
+      }
+
+      const assignedProviders = await Provider.find({ _id: { $in: assignedProviderIds } })
+        .select('clientId')
+        .lean();
+      const clientIds = Array.from(new Set(assignedProviders.map((provider) => String(provider.clientId)).filter(Boolean)));
+
+      const clients = await Client.find({ _id: { $in: clientIds } })
+        .select('_id practiceName status')
+        .sort({ practiceName: 1 });
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          clients,
+        },
+      });
+    }
+
     const clients = await Client.find({})
       .select('_id practiceName status')
       .sort({ practiceName: 1 });

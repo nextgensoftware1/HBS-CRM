@@ -1,12 +1,36 @@
 // backend/src/controllers/documentController.js
 const Document = require('../models/Document');
 const Enrollment = require('../models/Enrollment');
-const Payer = require('../models/Payer');
 // const { uploadFile, deleteFile, getSignedUrl } = require('../services/s3Service');
-const { uploadFile, deleteFile, getFileMetadata, checkDriveAccess } = require('../services/googleDriveService');
+const googleDriveOAuthService = require('../services/googleDriveOAuthService');
 const { createNotification, notifyAdmins } = require('../services/notificationService');
 const multer = require('multer');
 const path = require('path');
+
+const isAdminUser = (user) => user?.role === 'admin';
+
+const isEnrollmentAssignedToUser = (enrollment, userId) => {
+  if (!enrollment?.assignedTo) return false;
+  return String(enrollment.assignedTo) === String(userId);
+};
+
+const canUserAccessDocument = async (document, user) => {
+  if (isAdminUser(user)) return true;
+
+  if (String(document.uploadedBy || '') === String(user._id || '')) {
+    return true;
+  }
+
+  if (!document.enrollmentId) {
+    return false;
+  }
+
+  const enrollment = await Enrollment.findById(document.enrollmentId)
+    .select('assignedTo')
+    .lean();
+
+  return isEnrollmentAssignedToUser(enrollment, user._id);
+};
 
 const parsedUploadLimitMb = parseInt(process.env.MAX_DOCUMENT_FILE_SIZE_MB || '100', 10);
 const maxUploadBytes = Number.isFinite(parsedUploadLimitMb) && parsedUploadLimitMb > 0
@@ -127,8 +151,6 @@ const resolveGroupedStatus = (statuses = []) => {
   return 'pending';
 };
 
-const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 const getSubmissionQuery = (document) => {
   const metadata = document?.metadata || {};
   const onboardingData = metadata.onboardingData || {};
@@ -165,28 +187,15 @@ const ensureEnrollmentForApprovedDocument = async (document, actorId) => {
     return null;
   }
 
-  let payer = await Payer.findOne({
-    payerName: { $regex: `^${escapeRegex(insuranceService)}$`, $options: 'i' },
-  });
-
-  if (!payer) {
-    payer = await Payer.create({
-      payerName: insuranceService,
-      payerType: 'Other',
-      isActive: true,
-      createdBy: actorId,
-    });
-  }
-
   let enrollment = await Enrollment.findOne({
     providerId: document.providerId,
-    payerId: payer._id,
+    insuranceService,
   });
 
   if (!enrollment) {
     enrollment = await Enrollment.create({
       providerId: document.providerId,
-      payerId: payer._id,
+      insuranceService,
       status: 'document_collection',
       assignedTo: actorId,
       createdBy: actorId,
@@ -225,9 +234,17 @@ exports.getAllDocuments = async (req, res) => {
     // Build query
     const query = {};
 
-    // Non-admin users can only see documents they uploaded.
+    // Non-admin users can see their uploads and documents tied to enrollments assigned to them.
     if (req.user?.role !== 'admin') {
-      query.uploadedBy = req.user._id;
+      const assignedEnrollments = await Enrollment.find({ assignedTo: req.user._id })
+        .select('_id')
+        .lean();
+      const assignedEnrollmentIds = assignedEnrollments.map((entry) => entry._id);
+
+      query.$or = [
+        { uploadedBy: req.user._id },
+        { enrollmentId: { $in: assignedEnrollmentIds } },
+      ];
     }
     
     if (providerId) {
@@ -358,12 +375,7 @@ exports.getAllDocuments = async (req, res) => {
 // @access  Private
 exports.getDocument = async (req, res) => {
   try {
-    const query = { _id: req.params.id };
-    if (req.user?.role !== 'admin') {
-      query.uploadedBy = req.user._id;
-    }
-
-    const document = await Document.findOne(query)
+    const document = await Document.findById(req.params.id)
       .populate('providerId')
       .populate('enrollmentId')
       .populate('uploadedBy', 'fullName email')
@@ -373,6 +385,14 @@ exports.getDocument = async (req, res) => {
       return res.status(404).json({
         status: 'error',
         message: 'Document not found'
+      });
+    }
+
+    const hasAccess = await canUserAccessDocument(document, req.user);
+    if (!hasAccess) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'You can only access documents for enrollments assigned to you'
       });
     }
     
@@ -394,12 +414,7 @@ exports.getDocument = async (req, res) => {
 // @access  Private
 exports.getDocumentSubmission = async (req, res) => {
   try {
-    const query = { _id: req.params.id };
-    if (req.user?.role !== 'admin') {
-      query.uploadedBy = req.user._id;
-    }
-
-    const anchorDocument = await Document.findOne(query)
+    const anchorDocument = await Document.findById(req.params.id)
       .populate('providerId', 'firstName lastName npi')
       .populate('uploadedBy', 'fullName email');
 
@@ -410,8 +425,25 @@ exports.getDocumentSubmission = async (req, res) => {
       });
     }
 
+    const hasAccess = await canUserAccessDocument(anchorDocument, req.user);
+    if (!hasAccess) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'You can only access document submissions for enrollments assigned to you'
+      });
+    }
+
     const metadata = anchorDocument.metadata || {};
-    const visibilityQuery = req.user?.role === 'admin' ? {} : { uploadedBy: req.user._id };
+    const visibilityQuery = req.user?.role === 'admin'
+      ? {}
+      : (anchorDocument.enrollmentId
+        ? {
+            $or: [
+              { uploadedBy: req.user._id },
+              { enrollmentId: anchorDocument.enrollmentId },
+            ],
+          }
+        : { uploadedBy: req.user._id });
     const anchorSubmissionKey = buildSubmissionKey(anchorDocument);
 
     // Pull likely candidates first, then filter by the same grouping key used in list view.
@@ -589,7 +621,7 @@ exports.uploadDocument = async (req, res) => {
     }
     
     try {
-      const driveAccessible = await checkDriveAccess();
+      const driveAccessible = await googleDriveOAuthService.checkDriveAccess();
       if (!driveAccessible) {
         return res.status(503).json({
           status: 'error',
@@ -617,9 +649,38 @@ exports.uploadDocument = async (req, res) => {
         onboardingData,
         replaceDocumentId
       } = req.body;
+
+      let validatedEnrollment = null;
+
+      if (!isAdminUser(req.user)) {
+        if (!enrollmentId) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'Enrollment is required for non-admin uploads'
+          });
+        }
+
+        validatedEnrollment = await Enrollment.findById(enrollmentId)
+          .select('providerId assignedTo')
+          .lean();
+
+        if (!validatedEnrollment) {
+          return res.status(404).json({
+            status: 'error',
+            message: 'Enrollment not found'
+          });
+        }
+
+        if (!isEnrollmentAssignedToUser(validatedEnrollment, req.user._id)) {
+          return res.status(403).json({
+            status: 'error',
+            message: 'You can only upload documents for enrollments assigned to you'
+          });
+        }
+      }
       
       // Validate required fields for new uploads
-      if (!replaceDocumentId && (!providerId || !documentType)) {
+      if (!replaceDocumentId && (!documentType || (!providerId && !validatedEnrollment?.providerId))) {
         return res.status(400).json({
           status: 'error',
           message: 'Provider and document type are required'
@@ -641,8 +702,17 @@ exports.uploadDocument = async (req, res) => {
       }
 
       const enrollmentReference = enrollmentId || null;
+      const effectiveProviderId = validatedEnrollment?.providerId || providerId;
+
+      if (!isAdminUser(req.user) && providerId && String(providerId) !== String(validatedEnrollment.providerId)) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Provider does not match the assigned enrollment'
+        });
+      }
+
       const versionQuery = {
-        providerId,
+        providerId: effectiveProviderId,
         enrollmentId: enrollmentReference,
         documentType,
       };
@@ -688,7 +758,7 @@ exports.uploadDocument = async (req, res) => {
       }
       
       // Upload file to Google Drive (external storage)
-      const uploadResult = await uploadFile(
+      const uploadResult = await googleDriveOAuthService.uploadFileToAdminDrive(
         req.file.buffer,
         req.file.originalname,
         req.file.mimetype
@@ -696,16 +766,19 @@ exports.uploadDocument = async (req, res) => {
 
       // Re-upload flow: replace existing rejected document in-place (no new DB row)
       if (replaceDocumentId) {
-        const replaceQuery = { _id: replaceDocumentId };
-        if (req.user?.role !== 'admin') {
-          replaceQuery.uploadedBy = req.user._id;
-        }
-
-        const existingDocument = await Document.findOne(replaceQuery);
+        const existingDocument = await Document.findById(replaceDocumentId);
         if (!existingDocument) {
           return res.status(404).json({
             status: 'error',
             message: 'Original document not found for re-upload'
+          });
+        }
+
+        const canAccessExistingDocument = await canUserAccessDocument(existingDocument, req.user);
+        if (!canAccessExistingDocument) {
+          return res.status(403).json({
+            status: 'error',
+            message: 'You can only re-upload documents for enrollments assigned to you'
           });
         }
 
@@ -719,7 +792,7 @@ exports.uploadDocument = async (req, res) => {
         // Best-effort deletion of old storage object.
         try {
           if (existingDocument.fileKey) {
-            await deleteFile(existingDocument.fileKey);
+            await googleDriveOAuthService.deleteFile(existingDocument.fileKey);
           }
         } catch (deleteErr) {
           console.error('Old file deletion warning:', deleteErr);
@@ -811,7 +884,7 @@ exports.uploadDocument = async (req, res) => {
       
       // Create document record
       const document = await Document.create({
-        providerId,
+        providerId: effectiveProviderId,
         enrollmentId: enrollmentReference,
         documentType,
         fileName: req.file.originalname,
@@ -1025,7 +1098,7 @@ exports.deleteDocument = async (req, res) => {
 
     for (const docItem of targets) {
       try {
-        await deleteFile(docItem.fileKey);
+        await googleDriveOAuthService.deleteFile(docItem.fileKey);
       } catch (storageError) {
         console.error('Storage deletion error:', storageError);
       }
@@ -1080,12 +1153,7 @@ exports.deleteDocument = async (req, res) => {
 // @access  Private
 exports.downloadDocument = async (req, res) => {
   try {
-    const query = { _id: req.params.id };
-    if (req.user?.role !== 'admin') {
-      query.uploadedBy = req.user._id;
-    }
-
-    const document = await Document.findOne(query);
+    const document = await Document.findById(req.params.id);
     
     if (!document) {
       return res.status(404).json({
@@ -1093,11 +1161,19 @@ exports.downloadDocument = async (req, res) => {
         message: 'Document not found'
       });
     }
+
+    const hasAccess = await canUserAccessDocument(document, req.user);
+    if (!hasAccess) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'You can only download documents for enrollments assigned to you'
+      });
+    }
     
     // Generate signed URL (valid for 1 hour)
     // const signedUrl = getSignedUrl(document.fileKey, 3600);
     // Get Google Drive view link
-    const metadata = await getFileMetadata(document.fileKey);
+    const metadata = await googleDriveOAuthService.getFileMetadata(document.fileKey);
     const viewUrl = metadata.file.webViewLink;
     
     

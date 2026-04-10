@@ -5,7 +5,6 @@ import {
   FiHome, 
   FiUsers, 
   FiUserCheck, 
-  FiDollarSign, 
   FiFileText, 
   FiFile, 
   FiBell,
@@ -17,7 +16,6 @@ import {
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: FiHome },
   { name: 'Providers', href: '/providers', icon: FiUserCheck },
-  { name: 'Payers', href: '/payers', icon: FiDollarSign },
   { name: 'Enrollments', href: '/enrollments', icon: FiFileText },
   { name: 'Documents', href: '/documents', icon: FiFile },
   { name: 'Reminders', href: '/reminders', icon: FiBell },

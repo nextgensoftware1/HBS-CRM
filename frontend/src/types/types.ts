@@ -6,6 +6,7 @@ export interface User {
   fullName: string;
   role: 'admin' | 'credentialing_specialist';
   clientId?: string;
+  assignedProviders?: Array<string | { _id: string; firstName?: string; lastName?: string; npi?: string }>;
   permissions: {
     canViewAllClients: boolean;
     canEditProviders: boolean;
@@ -47,11 +48,13 @@ export interface Client {
 
 export interface Provider {
   _id: string;
-  clientId: string | Client;
+  clientId?: string | Client | null;
+  clientName?: string;
   firstName: string;
   lastName: string;
   npi: string;
   specialization: string;
+  providerCategory?: 'Individual' | 'Group' | 'Facility' | 'Multiple';
   licenseNumber: string;
   licenseState: string;
   licenseExpiryDate: Date;
@@ -86,35 +89,6 @@ export interface Provider {
   updatedAt: Date;
 }
 
-export interface Payer {
-  _id: string;
-  payerName: string;
-  payerType: 'Medicare' | 'Medicaid' | 'Commercial' | 'Other';
-  payerId?: string;
-  portalUrl?: string;
-  contactInfo?: {
-    phone: string;
-    email: string;
-    address: string;
-  };
-  processingTimeDays: number;
-  requiredDocuments: Array<{
-    documentType: DocumentType;
-    isMandatory: boolean;
-    specialInstructions?: string;
-  }>;
-  credentialingSteps?: Array<{
-    stepName: string;
-    stepOrder: number;
-    estimatedDays: number;
-  }>;
-  notes?: string;
-  isActive: boolean;
-  createdBy: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 export type EnrollmentStatus =
   | 'intake'
   | 'document_collection'
@@ -131,7 +105,7 @@ export type Priority = 'low' | 'medium' | 'high' | 'urgent';
 export interface Enrollment {
   _id: string;
   providerId: string | Provider;
-  payerId: string | Payer;
+  insuranceService: string;
   status: EnrollmentStatus;
   currentStage: string;
   progressPercentage: number;
@@ -151,7 +125,7 @@ export interface Enrollment {
   }>;
   notes: Array<{
     content: string;
-    noteType: 'internal' | 'client_communication' | 'payer_communication';
+    noteType: 'internal' | 'client_communication';
     createdBy: string | User;
     isPinned: boolean;
     createdAt: Date;

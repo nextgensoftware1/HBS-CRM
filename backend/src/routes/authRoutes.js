@@ -8,7 +8,9 @@ const {
   updatePassword,
   getAllUsers,
   updateUserRole,
-  createUserByAdmin
+  createUserByAdmin,
+  deleteUserByAdmin,
+  assignUserProvider
 } = require('../controllers/authController');
 const { protect, restrictTo } = require('../middleware/authMiddleware');
 
@@ -21,6 +23,8 @@ router.get('/me', protect, getMe);
 router.put('/update-password', protect, updatePassword);
 router.get('/users', protect, restrictTo('admin'), getAllUsers);
 router.post('/users', protect, restrictTo('admin'), createUserByAdmin);
+router.delete('/users/:id', protect, restrictTo('admin'), deleteUserByAdmin);
 router.patch('/users/:id/role', protect, restrictTo('admin'), updateUserRole);
+router.patch('/users/:id/provider', protect, restrictTo('admin'), assignUserProvider);
 
 module.exports = router;

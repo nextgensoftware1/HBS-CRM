@@ -54,6 +54,10 @@ const userSchema = new mongoose.Schema({
   profileImage: {
     type: String,
     default: null
+  },
+  assignedProviders: {
+    type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Provider' }],
+    default: []
   }
 }, {
   timestamps: true

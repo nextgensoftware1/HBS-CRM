@@ -120,7 +120,8 @@ exports.sendExpiringCredentialReminder = async (data) => {
  */
 exports.sendEnrollmentStatusUpdate = async (data) => {
   try {
-    const { toEmail, providerName, payerName, oldStatus, newStatus } = data;
+    const { toEmail, providerName, insuranceService, oldStatus, newStatus } = data;
+    const insuranceLabel = insuranceService || 'Insurance Service';
     
     const msg = {
       to: toEmail,
@@ -128,7 +129,7 @@ exports.sendEnrollmentStatusUpdate = async (data) => {
         email: fromEmail,
         name: fromName
       },
-      subject: `Enrollment Status Update: ${providerName} - ${payerName}`,
+      subject: `Enrollment Status Update: ${providerName} - ${insuranceLabel}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #16a34a;">Enrollment Status Update</h2>
@@ -137,7 +138,7 @@ exports.sendEnrollmentStatusUpdate = async (data) => {
           
           <div style="background-color: #f0fdf4; border-left: 4px solid #16a34a; padding: 15px; margin: 20px 0;">
             <p style="margin: 5px 0;"><strong>Provider:</strong> ${providerName}</p>
-            <p style="margin: 5px 0;"><strong>Payer:</strong> ${payerName}</p>
+            <p style="margin: 5px 0;"><strong>Insurance Service:</strong> ${insuranceLabel}</p>
             <p style="margin: 5px 0;"><strong>Previous Status:</strong> ${oldStatus}</p>
             <p style="margin: 5px 0;"><strong>New Status:</strong> <span style="color: #16a34a; font-weight: bold;">${newStatus}</span></p>
           </div>
