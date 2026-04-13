@@ -29,6 +29,8 @@ export const documentService = {
 		enrollmentId?: string;
 		submissionId?: string;
 		replaceDocumentId?: string;
+		requestedUpload?: boolean;
+		requestedDocumentLabel?: string;
 		documentType: string;
 		file: File;
 		issueDate?: string;
@@ -43,6 +45,8 @@ export const documentService = {
 		if (payload.enrollmentId) formData.append('enrollmentId', payload.enrollmentId);
 		if (payload.submissionId) formData.append('submissionId', payload.submissionId);
 		if (payload.replaceDocumentId) formData.append('replaceDocumentId', payload.replaceDocumentId);
+		if (typeof payload.requestedUpload === 'boolean') formData.append('requestedUpload', String(payload.requestedUpload));
+		if (payload.requestedDocumentLabel) formData.append('requestedDocumentLabel', payload.requestedDocumentLabel);
 		formData.append('documentType', payload.documentType);
 		formData.append('file', payload.file);
 

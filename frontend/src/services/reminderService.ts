@@ -34,4 +34,19 @@ export const reminderService = {
   async deleteReminder(id: string, actionNote?: string): Promise<void> {
     await api.delete(`/reminders/${id}`, { data: { actionNote } });
   },
+
+  async createReminder(payload: {
+    enrollmentId?: string;
+    providerId: string;
+    reminderType: string;
+    title: string;
+    description: string;
+    dueDate: string;
+    priority: string;
+    assignedTo: string;
+    metadata?: Record<string, any>;
+  }): Promise<any> {
+    const response = await api.post('/reminders', payload);
+    return response.data?.data?.reminder;
+  },
 };

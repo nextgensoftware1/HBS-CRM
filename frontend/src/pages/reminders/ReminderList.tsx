@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 import { reminderService } from '../../services/reminderService';
 import { useAuthStore } from '../../store/authStore';
@@ -7,15 +8,22 @@ import Modal from '../../components/common/Modal';
 type ReminderRow = {
 	_id: string;
 	title: string;
+	description?: string;
 	reminderType: string;
 	dueDate: string;
 	priority: string;
 	status: string;
+	metadata?: {
+		requestedDocuments?: string[];
+	};
+	enrollmentId?: { _id?: string } | string | null;
+	providerId?: { _id?: string } | string | null;
 };
 
 export default function ReminderList() {
 	const user = useAuthStore((state) => state.user);
 	const isAdmin = user?.role === 'admin';
+	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [reminders, setReminders] = useState<ReminderRow[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -97,6 +105,23 @@ export default function ReminderList() {
 		}
 	};
 
+	const openUploadForReminder = (reminder: ReminderRow) => {
+		const enrollmentId = typeof reminder.enrollmentId === 'object'
+			? reminder.enrollmentId?._id
+			: reminder.enrollmentId;
+
+		const providerId = typeof reminder.providerId === 'object'
+			? reminder.providerId?._id
+			: reminder.providerId;
+
+		const query = new URLSearchParams();
+		query.set('fromReminder', '1');
+		if (enrollmentId) query.set('enrollmentId', String(enrollmentId));
+		if (providerId) query.set('providerId', String(providerId));
+
+		navigate(`/documents/upload?${query.toString()}`);
+	};
+
 	return (
 		<div className="space-y-4">
 			<div>
@@ -132,36 +157,46 @@ export default function ReminderList() {
 						<thead className="bg-gray-50">
 							<tr>
 								<th className="px-4 py-3 text-left font-medium text-gray-700">Title</th>
+								<th className="px-4 py-3 text-left font-medium text-gray-700">Message</th>
 								<th className="px-4 py-3 text-left font-medium text-gray-700">Type</th>
 								<th className="px-4 py-3 text-left font-medium text-gray-700">Due Date</th>
 								<th className="px-4 py-3 text-left font-medium text-gray-700">Priority</th>
 								<th className="px-4 py-3 text-left font-medium text-gray-700">Status</th>
-								{isAdmin && <th className="px-4 py-3 text-left font-medium text-gray-700">Actions</th>}
+								<th className="px-4 py-3 text-left font-medium text-gray-700">Actions</th>
 							</tr>
 						</thead>
 						<tbody>
 							{reminders.length === 0 ? (
-								<tr><td className="px-4 py-4 text-gray-500" colSpan={isAdmin ? 6 : 5}>No reminders found.</td></tr>
+								<tr><td className="px-4 py-4 text-gray-500" colSpan={7}>No reminders found.</td></tr>
 							) : reminders.map((reminder) => (
 								<tr key={reminder._id} className="border-t border-gray-100">
 									<td className="px-4 py-3 text-gray-900">{reminder.title}</td>
+									<td className="px-4 py-3 text-gray-700 max-w-md">
+										<p className="text-sm break-words">{reminder.description || 'N/A'}</p>
+										{Array.isArray(reminder.metadata?.requestedDocuments) && reminder.metadata!.requestedDocuments!.length > 0 && (
+											<p className="mt-1 text-xs text-amber-700 break-words">
+												Requested: {reminder.metadata!.requestedDocuments!.join(', ')}
+											</p>
+										)}
+									</td>
 									<td className="px-4 py-3 text-gray-700">{reminder.reminderType}</td>
 									<td className="px-4 py-3 text-gray-700">{new Date(reminder.dueDate).toLocaleDateString()}</td>
 									<td className="px-4 py-3 text-gray-700">{reminder.priority}</td>
 									<td className="px-4 py-3"><span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{reminder.status}</span></td>
-									{isAdmin && (
-										<td className="px-4 py-3">
-											<div className="flex flex-wrap gap-2">
-												{reminder.status !== 'completed' && (
-													<button onClick={() => openActionModal('complete', reminder._id)} className="px-2 py-1 text-xs rounded bg-emerald-100 text-emerald-700">Complete</button>
-												)}
-												{reminder.status !== 'dismissed' && (
-													<button onClick={() => openActionModal('dismiss', reminder._id)} className="px-2 py-1 text-xs rounded bg-amber-100 text-amber-700">Dismiss</button>
-												)}
-												<button onClick={() => openActionModal('delete', reminder._id)} className="px-2 py-1 text-xs rounded bg-red-100 text-red-700">Delete</button>
-											</div>
-										</td>
-									)}
+									<td className="px-4 py-3">
+										<div className="flex flex-wrap gap-2">
+											{!isAdmin && reminder.reminderType === 'missing_document' && reminder.status !== 'completed' && (
+												<button onClick={() => openUploadForReminder(reminder)} className="px-2 py-1 text-xs rounded bg-primary-100 text-primary-700">Upload Requested Docs</button>
+											)}
+											{isAdmin && reminder.status !== 'completed' && (
+												<button onClick={() => openActionModal('complete', reminder._id)} className="px-2 py-1 text-xs rounded bg-emerald-100 text-emerald-700">Complete</button>
+											)}
+											{isAdmin && reminder.status !== 'dismissed' && (
+												<button onClick={() => openActionModal('dismiss', reminder._id)} className="px-2 py-1 text-xs rounded bg-amber-100 text-amber-700">Dismiss</button>
+											)}
+											{isAdmin && <button onClick={() => openActionModal('delete', reminder._id)} className="px-2 py-1 text-xs rounded bg-red-100 text-red-700">Delete</button>}
+										</div>
+									</td>
 								</tr>
 							))}
 						</tbody>

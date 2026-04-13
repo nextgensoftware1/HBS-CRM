@@ -172,6 +172,8 @@ const documentLabelMap: Record<keyof EnrollmentFormData['documents'], string> = 
 
 export default function DocumentUpload() {
 	const [searchParams] = useSearchParams();
+  const fromReminder = searchParams.get('fromReminder') === '1';
+  const reminderEnrollmentId = String(searchParams.get('enrollmentId') || '').trim();
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role === 'admin';
   const [providers, setProviders] = useState<ProviderItem[]>([]);
@@ -202,12 +204,22 @@ export default function DocumentUpload() {
     }
 
     try {
-      const response = await enrollmentService.getEnrollments(1, 300, { uploadReadyOnly: true });
+      const response = await enrollmentService.getEnrollments(
+        1,
+        300,
+        fromReminder ? {} : { uploadReadyOnly: true }
+      );
       const items = (response.items || []) as unknown as AssignedEnrollmentOption[];
       setAssignedEnrollments(items);
 
       setSelectedEnrollmentId((prev) => {
         if (!items.length) return '';
+        if (fromReminder && reminderEnrollmentId) {
+          const reminderSelectionExists = items.some((entry) => entry._id === reminderEnrollmentId);
+          if (reminderSelectionExists) {
+            return reminderEnrollmentId;
+          }
+        }
         const previousStillExists = items.some((entry) => entry._id === prev);
         return previousStillExists ? prev : items[0]._id;
       });
@@ -216,7 +228,7 @@ export default function DocumentUpload() {
     } finally {
       setLoadingAssignedEnrollments(false);
     }
-  }, [isAdmin]);
+  }, [isAdmin, fromReminder, reminderEnrollmentId]);
 
   useEffect(() => {
     loadAssignedEnrollments();

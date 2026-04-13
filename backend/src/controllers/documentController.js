@@ -1,6 +1,7 @@
 // backend/src/controllers/documentController.js
 const Document = require('../models/Document');
 const Enrollment = require('../models/Enrollment');
+const Reminder = require('../models/Reminder');
 // const { uploadFile, deleteFile, getSignedUrl } = require('../services/s3Service');
 const googleDriveOAuthService = require('../services/googleDriveOAuthService');
 const { createNotification, notifyAdmins } = require('../services/notificationService');
@@ -140,6 +141,108 @@ const buildSubmissionKey = (doc) => {
   }
 
   return String(doc._id);
+};
+
+const normalizeReminderText = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const requestedLabelMatches = ({ requestedItem, requestedDocumentLabel, documentType }) => {
+  const normalizedItem = normalizeReminderText(requestedItem);
+  if (!normalizedItem) return false;
+
+  const normalizedRequestedLabel = normalizeReminderText(requestedDocumentLabel);
+  if (normalizedRequestedLabel && normalizedItem === normalizedRequestedLabel) {
+    return true;
+  }
+
+  const normalizedDocumentType = normalizeReminderText(documentType);
+  if (normalizedDocumentType && normalizedItem.includes(normalizedDocumentType)) {
+    return true;
+  }
+
+  return false;
+};
+
+const resolveMissingDocumentReminderAfterUpload = async ({
+  userId,
+  providerId,
+  enrollmentId,
+  submissionId,
+  requestedDocumentLabel,
+  documentType,
+  uploadedDocumentId,
+}) => {
+  if (!userId || !providerId) return;
+
+  const reminderQuery = {
+    reminderType: 'missing_document',
+    assignedTo: userId,
+    providerId,
+    status: { $in: ['pending', 'sent'] },
+  };
+
+  const reminders = await Reminder.find(reminderQuery).sort({ createdAt: -1 });
+  if (!reminders.length) return;
+
+  const normalizedSubmissionId = String(submissionId || '').trim();
+  const normalizedEnrollmentId = String(enrollmentId || '').trim();
+
+  for (const reminder of reminders) {
+    const metadata = reminder.metadata && typeof reminder.metadata === 'object'
+      ? { ...reminder.metadata }
+      : {};
+
+    const reminderSubmissionId = String(metadata.submissionId || '').trim();
+    const reminderEnrollmentId = String(reminder.enrollmentId || '').trim();
+
+    if (normalizedSubmissionId && reminderSubmissionId && normalizedSubmissionId !== reminderSubmissionId) {
+      continue;
+    }
+
+    if (!normalizedSubmissionId && normalizedEnrollmentId && reminderEnrollmentId && normalizedEnrollmentId !== reminderEnrollmentId) {
+      continue;
+    }
+
+    const requestedDocuments = Array.isArray(metadata.requestedDocuments)
+      ? metadata.requestedDocuments
+      : [];
+
+    if (!requestedDocuments.length) {
+      continue;
+    }
+
+    const matchedDocuments = requestedDocuments.filter((item) => requestedLabelMatches({
+      requestedItem: item,
+      requestedDocumentLabel,
+      documentType,
+    }));
+
+    if (!matchedDocuments.length) {
+      continue;
+    }
+
+    const remainingDocuments = requestedDocuments.filter((item) => !matchedDocuments.includes(item));
+    const resolvedDocuments = Array.isArray(metadata.resolvedDocuments)
+      ? metadata.resolvedDocuments
+      : [];
+
+    metadata.requestedDocuments = remainingDocuments;
+    metadata.resolvedDocuments = [
+      ...resolvedDocuments,
+      ...matchedDocuments.map((label) => ({
+        label,
+        documentId: uploadedDocumentId || null,
+        resolvedAt: new Date().toISOString(),
+      })),
+    ];
+
+    if (!remainingDocuments.length) {
+      reminder.status = 'completed';
+      reminder.completedAt = new Date();
+    }
+
+    reminder.metadata = metadata;
+    await reminder.save();
+  }
 };
 
 const resolveGroupedStatus = (statuses = []) => {
@@ -425,14 +528,6 @@ exports.getDocumentSubmission = async (req, res) => {
       });
     }
 
-    const hasAccess = await canUserAccessDocument(anchorDocument, req.user);
-    if (!hasAccess) {
-      return res.status(403).json({
-        status: 'error',
-        message: 'You can only access document submissions for enrollments assigned to you'
-      });
-    }
-
     const metadata = anchorDocument.metadata || {};
     const visibilityQuery = req.user?.role === 'admin'
       ? {}
@@ -455,7 +550,6 @@ exports.getDocumentSubmission = async (req, res) => {
 
       candidateQuery = {
         ...visibilityQuery,
-        uploadedBy: anchorDocument.uploadedBy?._id || anchorDocument.uploadedBy,
         'metadata.onboardingData': { $exists: true },
         createdAt: {
           $gte: bucketStart,
@@ -476,12 +570,28 @@ exports.getDocumentSubmission = async (req, res) => {
 
     const candidateDocs = await Document.find(candidateQuery)
       .populate('providerId', 'firstName lastName npi')
+      .populate('enrollmentId', '_id')
       .populate('uploadedBy', 'fullName email')
       .populate('verifiedBy', 'fullName')
       .sort({ createdAt: -1 });
 
     const submissionDocs = candidateDocs.filter((doc) => buildSubmissionKey(doc) === anchorSubmissionKey);
-    const docs = submissionDocs.length > 0 ? submissionDocs : [anchorDocument];
+    let docs = submissionDocs;
+
+    if (!docs.length) {
+      if (isAdminUser(req.user)) {
+        docs = [anchorDocument];
+      } else {
+        const canAccessAnchor = await canUserAccessDocument(anchorDocument, req.user);
+        if (!canAccessAnchor) {
+          return res.status(403).json({
+            status: 'error',
+            message: 'You can only access document submissions for enrollments assigned to you'
+          });
+        }
+        docs = [anchorDocument];
+      }
+    }
     const firstWithOnboarding = docs.find((doc) => Boolean(doc?.metadata?.onboardingData));
     const onboardingData = firstWithOnboarding?.metadata?.onboardingData || null;
     const submissionId = buildSubmissionKey(anchorDocument);
@@ -553,28 +663,76 @@ exports.getDocumentSubmission = async (req, res) => {
           )
         );
 
-    const uniqueFilesMap = new Map();
-    for (const doc of docs) {
-      const uniqueFileKey = `${doc.documentType}::${doc.fileName}`;
-      if (!uniqueFilesMap.has(uniqueFileKey)) {
-        uniqueFilesMap.set(uniqueFileKey, {
-          _id: doc._id,
-          fileName: doc.fileName,
-          documentType: doc.documentType,
-          status: doc.status,
-          createdAt: doc.createdAt,
-          fileUrl: doc.fileUrl,
-        });
+    const files = docs.map((doc) => ({
+      _id: doc._id,
+      fileName: doc.fileName,
+      documentType: doc.documentType,
+      status: doc.status,
+      createdAt: doc.createdAt,
+      fileUrl: doc.fileUrl,
+      version: doc.version || 1,
+    }));
+
+    const latestProviderId = latest?.providerId && typeof latest.providerId === 'object'
+      ? latest.providerId._id
+      : latest?.providerId;
+
+    const insuranceCandidates = Array.from(new Set([
+      ...insuranceServices,
+      String(latest?.metadata?.insuranceService || '').trim(),
+    ].filter(Boolean)));
+
+    let resolvedEnrollmentId = latest.enrollmentId?._id || latest.enrollmentId || null;
+
+    if (!resolvedEnrollmentId && !isAdminUser(req.user) && latestProviderId) {
+      const enrollmentQuery = {
+        providerId: latestProviderId,
+        assignedTo: req.user._id,
+      };
+
+      if (insuranceCandidates.length > 0) {
+        enrollmentQuery.$or = [
+          { insuranceService: { $in: insuranceCandidates } },
+          { insuranceServices: { $in: insuranceCandidates } },
+        ];
+      }
+
+      const matchedEnrollment = await Enrollment.findOne(enrollmentQuery)
+        .select('_id')
+        .sort({ updatedAt: -1 })
+        .lean();
+
+      if (matchedEnrollment?._id) {
+        resolvedEnrollmentId = matchedEnrollment._id;
+      } else {
+        const relaxedEnrollmentQuery = {
+          providerId: latestProviderId,
+        };
+
+        if (insuranceCandidates.length > 0) {
+          relaxedEnrollmentQuery.$or = [
+            { insuranceService: { $in: insuranceCandidates } },
+            { insuranceServices: { $in: insuranceCandidates } },
+          ];
+        }
+
+        const relaxedEnrollment = await Enrollment.findOne(relaxedEnrollmentQuery)
+          .select('_id')
+          .sort({ updatedAt: -1 })
+          .lean();
+
+        if (relaxedEnrollment?._id) {
+          resolvedEnrollmentId = relaxedEnrollment._id;
+        }
       }
     }
-
-    const uniqueFiles = Array.from(uniqueFilesMap.values());
 
     res.status(200).json({
       status: 'success',
       data: {
         submission: {
           submissionId,
+          enrollmentId: resolvedEnrollmentId,
           provider: latest.providerId,
           providers,
           uploadedBy: latest.uploadedBy,
@@ -585,9 +743,9 @@ exports.getDocumentSubmission = async (req, res) => {
           selectedInsuranceSelections,
           status: latest.status,
           createdAt: latest.createdAt,
-          filesCount: uniqueFiles.length,
+          filesCount: files.length,
           onboardingData,
-          files: uniqueFiles,
+          files,
         }
       }
     });
@@ -644,6 +802,8 @@ exports.uploadDocument = async (req, res) => {
         providerId,
         enrollmentId,
         documentType,
+        requestedUpload,
+        requestedDocumentLabel,
         issueDate,
         expiryDate,
         notes,
@@ -655,27 +815,111 @@ exports.uploadDocument = async (req, res) => {
       } = req.body;
 
       let validatedEnrollment = null;
+      let resolvedEnrollmentId = String(enrollmentId || '').trim();
+      let allowSubmissionOwnerUpload = false;
+      const isRequestedUpload = ['1', 'true', 'yes'].includes(
+        String(requestedUpload || '').trim().toLowerCase()
+      );
 
       if (!isAdminUser(req.user)) {
-        if (!enrollmentId) {
-          return res.status(400).json({
-            status: 'error',
-            message: 'Enrollment is required for non-admin uploads'
-          });
+        if (!resolvedEnrollmentId) {
+          const providerForResolution = String(providerId || '').trim();
+          if (!providerForResolution) {
+            return res.status(400).json({
+              status: 'error',
+              message: 'Enrollment context is missing and provider information is unavailable'
+            });
+          }
+
+          const insuranceCandidates = Array.from(new Set(
+            String(insuranceService || '')
+              .split(',')
+              .map((value) => String(value || '').trim())
+              .filter(Boolean)
+          ));
+
+          const enrollmentQuery = {
+            providerId: providerForResolution,
+            assignedTo: req.user._id,
+          };
+
+          if (insuranceCandidates.length > 0) {
+            enrollmentQuery.$or = [
+              { insuranceService: { $in: insuranceCandidates } },
+              { insuranceServices: { $in: insuranceCandidates } },
+            ];
+          }
+
+          const autoResolvedEnrollment = await Enrollment.findOne(enrollmentQuery)
+            .select('_id providerId assignedTo status')
+            .sort({ updatedAt: -1 })
+            .lean();
+
+          if (autoResolvedEnrollment?._id) {
+            validatedEnrollment = autoResolvedEnrollment;
+            resolvedEnrollmentId = String(autoResolvedEnrollment._id);
+          } else {
+            const ownsAnyProviderSubmission = await Document.exists({
+              uploadedBy: req.user._id,
+              providerId: providerForResolution,
+            });
+
+            if (ownsAnyProviderSubmission) {
+              const relaxedEnrollmentQuery = {
+                providerId: providerForResolution,
+              };
+
+              if (insuranceCandidates.length > 0) {
+                relaxedEnrollmentQuery.$or = [
+                  { insuranceService: { $in: insuranceCandidates } },
+                  { insuranceServices: { $in: insuranceCandidates } },
+                ];
+              }
+
+              const relaxedEnrollment = await Enrollment.findOne(relaxedEnrollmentQuery)
+                .select('_id providerId assignedTo status')
+                .sort({ updatedAt: -1 })
+                .lean();
+
+              if (relaxedEnrollment?._id) {
+                validatedEnrollment = relaxedEnrollment;
+                resolvedEnrollmentId = String(relaxedEnrollment._id);
+                allowSubmissionOwnerUpload = true;
+              } else if (isRequestedUpload) {
+                // For admin-requested missing document uploads, allow submission owner to upload
+                // even if enrollment link is missing (legacy submissions).
+                validatedEnrollment = {
+                  providerId: providerForResolution,
+                  assignedTo: req.user._id,
+                  status: 'intake',
+                };
+                allowSubmissionOwnerUpload = true;
+              }
+            }
+
+            if (!resolvedEnrollmentId && !allowSubmissionOwnerUpload) {
+              return res.status(400).json({
+                status: 'error',
+                message: 'Enrollment context is missing. Please open Upload Document from your reminder and retry.'
+              });
+            }
+          }
         }
 
-        validatedEnrollment = await Enrollment.findById(enrollmentId)
-          .select('providerId assignedTo status')
-          .lean();
+        if (!validatedEnrollment && resolvedEnrollmentId) {
+          validatedEnrollment = await Enrollment.findById(resolvedEnrollmentId)
+            .select('providerId assignedTo status')
+            .lean();
+        }
 
-        if (!validatedEnrollment) {
+        if (!validatedEnrollment && !allowSubmissionOwnerUpload) {
           return res.status(404).json({
             status: 'error',
             message: 'Enrollment not found'
           });
         }
 
-        if (!isEnrollmentAssignedToUser(validatedEnrollment, req.user._id)) {
+        if (!isEnrollmentAssignedToUser(validatedEnrollment, req.user._id) && !allowSubmissionOwnerUpload) {
           return res.status(403).json({
             status: 'error',
             message: 'You can only upload documents for enrollments assigned to you'
@@ -683,25 +927,13 @@ exports.uploadDocument = async (req, res) => {
         }
 
         const enrollmentStatus = String(validatedEnrollment.status || '').toLowerCase();
-        if (['submitted', 'approved'].includes(enrollmentStatus)) {
+        if (['submitted', 'approved'].includes(enrollmentStatus) && !isRequestedUpload) {
           return res.status(400).json({
             status: 'error',
             message: 'This enrollment is already completed and cannot accept new submissions'
           });
         }
 
-        if (!replaceDocumentId) {
-          const existingEnrollmentDocuments = await Document.countDocuments({
-            enrollmentId,
-          });
-
-          if (existingEnrollmentDocuments > 0) {
-            return res.status(400).json({
-              status: 'error',
-              message: 'Documents were already submitted for this enrollment'
-            });
-          }
-        }
       }
       
       // Validate required fields for new uploads
@@ -726,7 +958,7 @@ exports.uploadDocument = async (req, res) => {
         }
       }
 
-      const enrollmentReference = enrollmentId || null;
+      const enrollmentReference = resolvedEnrollmentId || null;
       const effectiveProviderId = validatedEnrollment?.providerId || providerId;
 
       if (!isAdminUser(req.user) && providerId && String(providerId) !== String(validatedEnrollment.providerId)) {
@@ -886,6 +1118,18 @@ exports.uploadDocument = async (req, res) => {
           },
         });
 
+        if (isRequestedUpload) {
+          await resolveMissingDocumentReminderAfterUpload({
+            userId: req.user._id,
+            providerId: existingDocument.providerId,
+            enrollmentId: existingDocument.enrollmentId,
+            submissionId: submissionId || existingDocument.metadata?.submissionId,
+            requestedDocumentLabel,
+            documentType: existingDocument.documentType,
+            uploadedDocumentId: existingDocument._id,
+          });
+        }
+
         return res.status(200).json({
           status: 'success',
           message: 'Document re-uploaded successfully',
@@ -958,6 +1202,18 @@ exports.uploadDocument = async (req, res) => {
           submissionId: document.metadata?.submissionId || null,
         },
       });
+
+      if (isRequestedUpload) {
+        await resolveMissingDocumentReminderAfterUpload({
+          userId: req.user._id,
+          providerId: document.providerId,
+          enrollmentId: document.enrollmentId,
+          submissionId: document.metadata?.submissionId || submissionId,
+          requestedDocumentLabel,
+          documentType: document.documentType,
+          uploadedDocumentId: document._id,
+        });
+      }
       
       res.status(201).json({
         status: 'success',
