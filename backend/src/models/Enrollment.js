@@ -1,6 +1,80 @@
 // backend/src/models/Enrollment.js
 const mongoose = require('mongoose');
 
+const REQUIRED_DOCUMENT_SLOTS = 9;
+const REQUIRED_ONBOARDING_TEXT_FIELDS = [
+  'legalName',
+  'taxId',
+  'npi',
+  'specialty',
+  'practiceAddress',
+  'mailingAddress',
+  'billingAddress',
+  'phone',
+  'email',
+  'authorizedPersonName',
+  'authorizedPersonPhone',
+  'authorizedPersonEmail',
+  'medicareId',
+  'medicaidId',
+  'nppesLogin',
+  'caqhLogin',
+  'avilityLogin',
+];
+
+const calculateProgressFromDocuments = (documents = []) => {
+  if (!Array.isArray(documents) || documents.length === 0) {
+    return 0;
+  }
+
+  const uniqueDocumentKeys = new Set(
+    documents.map((doc) => `${String(doc.documentType || '').trim()}::${String(doc.fileName || '').trim()}`)
+  );
+
+  const documentsRatio = Math.min(uniqueDocumentKeys.size / REQUIRED_DOCUMENT_SLOTS, 1);
+  const latestOnboardingPayloadDoc = documents.find((doc) => doc?.metadata?.onboardingData);
+  const onboardingData = latestOnboardingPayloadDoc?.metadata?.onboardingData || {};
+
+  let formChecksTotal = 0;
+  let formChecksPassed = 0;
+
+  for (const fieldName of REQUIRED_ONBOARDING_TEXT_FIELDS) {
+    formChecksTotal += 1;
+    if (String(onboardingData[fieldName] || '').trim()) {
+      formChecksPassed += 1;
+    }
+  }
+
+  formChecksTotal += 1;
+  if (String(onboardingData.providerType || '').trim()) {
+    formChecksPassed += 1;
+  }
+
+  formChecksTotal += 1;
+  if (String(onboardingData.enrollmentType || '').trim()) {
+    formChecksPassed += 1;
+  }
+
+  const services = onboardingData.services || {};
+  const anyServiceSelected = Boolean(
+    services.outPatient || services.inPatient || services.emergency || services.other
+  );
+  formChecksTotal += 1;
+  if (anyServiceSelected) {
+    formChecksPassed += 1;
+  }
+
+  if (services.other) {
+    formChecksTotal += 1;
+    if (String(services.otherDescription || '').trim()) {
+      formChecksPassed += 1;
+    }
+  }
+
+  const formRatio = formChecksTotal > 0 ? (formChecksPassed / formChecksTotal) : 0;
+  return Math.max(0, Math.min(100, Math.round(((documentsRatio * 0.7) + (formRatio * 0.3)) * 100)));
+};
+
 const enrollmentSchema = new mongoose.Schema({
   providerId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -13,6 +87,10 @@ const enrollmentSchema = new mongoose.Schema({
     required: [true, 'Insurance service is required'],
     trim: true
   },
+  insuranceServices: [{
+    type: String,
+    trim: true,
+  }],
   status: {
     type: String,
     enum: [
@@ -166,7 +244,7 @@ enrollmentSchema.index(
     unique: true,
     partialFilterExpression: {
       providerId: null,
-      'enrollmentProfile.npi': { $type: 'string', $ne: '' },
+      'enrollmentProfile.npi': { $type: 'string' },
     },
     name: 'enrollmentProfile_npi_1_insuranceService_1_partial',
   }
@@ -176,6 +254,29 @@ enrollmentSchema.index(
 enrollmentSchema.index({ status: 1 });
 enrollmentSchema.index({ assignedTo: 1 });
 enrollmentSchema.index({ createdAt: -1 });
+
+// Keep legacy single-value field and new multi-value field in sync.
+enrollmentSchema.pre('validate', function(next) {
+  const normalizedInsuranceService = String(this.insuranceService || '').trim();
+  const normalizedInsuranceServices = Array.isArray(this.insuranceServices)
+    ? Array.from(new Set(this.insuranceServices.map((item) => String(item || '').trim()).filter(Boolean)))
+    : [];
+
+  if (!normalizedInsuranceServices.length && normalizedInsuranceService) {
+    normalizedInsuranceServices.push(normalizedInsuranceService);
+  }
+
+  if (!normalizedInsuranceService && normalizedInsuranceServices.length) {
+    this.insuranceService = normalizedInsuranceServices[0];
+  }
+
+  if (normalizedInsuranceService && !normalizedInsuranceServices.includes(normalizedInsuranceService)) {
+    normalizedInsuranceServices.unshift(normalizedInsuranceService);
+  }
+
+  this.insuranceServices = normalizedInsuranceServices;
+  next();
+});
 
 // Method to add timeline event
 enrollmentSchema.methods.addTimelineEvent = function(eventData) {
@@ -203,15 +304,22 @@ enrollmentSchema.methods.addNote = function(noteData) {
 enrollmentSchema.methods.calculateProgress = async function() {
   const Document = mongoose.model('Document');
 
-  // Get approved documents for this enrollment
-  const approvedDocs = await Document.countDocuments({
-    enrollmentId: this._id,
-    status: 'approved'
-  });
+  const enrollmentDocuments = await Document.find({ enrollmentId: this._id })
+    .select('documentType fileName metadata')
+    .sort({ createdAt: -1 })
+    .lean();
 
-  // Without service-specific templates, treat at least one approved document as complete for progress KPI.
-  this.progressPercentage = approvedDocs > 0 ? 100 : 0;
+  if (!enrollmentDocuments.length) {
+    this.progressPercentage = 0;
+    return this.save();
+  }
+
+  this.progressPercentage = calculateProgressFromDocuments(enrollmentDocuments);
   return this.save();
+};
+
+enrollmentSchema.statics.computeProgressFromDocuments = function(documents = []) {
+  return calculateProgressFromDocuments(documents);
 };
 
 module.exports = mongoose.model('Enrollment', enrollmentSchema);

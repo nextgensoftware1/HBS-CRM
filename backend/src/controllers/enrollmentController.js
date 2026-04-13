@@ -2,7 +2,9 @@
 const Enrollment = require('../models/Enrollment');
 const Provider = require('../models/Provider');
 const Document = require('../models/Document');
+const Reminder = require('../models/Reminder');
 const User = require('../models/User');
+const googleDriveOAuthService = require('../services/googleDriveOAuthService');
 const { createNotification } = require('../services/notificationService');
 
 const isAdminUser = (user) => user?.role === 'admin';
@@ -20,13 +22,46 @@ const getProviderDisplayName = (provider) => {
   return fullName || provider.npi || 'Provider';
 };
 
+const buildEnrollmentProfileFromProviderData = (providerPayload = {}) => ({
+  clientName: String(providerPayload.clientName || '').trim(),
+  firstName: String(providerPayload.firstName || '').trim(),
+  lastName: String(providerPayload.lastName || '').trim(),
+  npi: String(providerPayload.npi || '').trim(),
+  specialization: String(providerPayload.specialization || '').trim(),
+  providerCategory: providerPayload.providerCategory || 'Individual',
+  dateOfBirth: providerPayload.dateOfBirth || null,
+  email: String(providerPayload.email || '').trim(),
+  phone: String(providerPayload.phone || '').trim(),
+  ssn: String(providerPayload.ssn || '').trim() || null,
+  caqhId: String(providerPayload.caqhId || '').trim() || null,
+  medicarePTAN: String(providerPayload.medicarePTAN || '').trim() || null,
+  medicaidId: String(providerPayload.medicaidId || '').trim() || null,
+  licenseNumber: String(providerPayload.licenseNumber || '').trim(),
+  licenseState: String(providerPayload.licenseState || '').trim(),
+  licenseExpiryDate: providerPayload.licenseExpiryDate || null,
+  credentialLogins: {
+    pecosUsername: String(providerPayload.pecosUsername || '').trim() || null,
+    pecosPassword: String(providerPayload.pecosPassword || '').trim() || null,
+    caqhUsername: String(providerPayload.caqhUsername || '').trim() || null,
+    caqhPassword: String(providerPayload.caqhPassword || '').trim() || null,
+  },
+  insuranceServices: Array.isArray(providerPayload.insuranceServices)
+    ? providerPayload.insuranceServices.map((value) => String(value).trim()).filter(Boolean)
+    : [],
+});
+
 const notifyEnrollmentAssignee = async ({ enrollment, recipientUserId, actorUserId, provider }) => {
   if (!recipientUserId || !actorUserId || !enrollment?._id) {
     return;
   }
 
   const providerLabel = getProviderDisplayName(provider);
-  const insuranceLabel = String(enrollment.insuranceService || '').trim() || 'Insurance Service';
+  const insuranceValues = Array.isArray(enrollment.insuranceServices)
+    ? enrollment.insuranceServices.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  const insuranceLabel = insuranceValues.length
+    ? insuranceValues.join(', ')
+    : (String(enrollment.insuranceService || '').trim() || 'Insurance Service');
 
   await createNotification({
     recipient: recipientUserId,
@@ -56,6 +91,7 @@ exports.getAllEnrollments = async (req, res) => {
       insuranceService,
       assignedTo, 
       priority,
+      uploadReadyOnly,
       page = 1, 
       limit = 10 
     } = req.query;
@@ -72,7 +108,11 @@ exports.getAllEnrollments = async (req, res) => {
     }
     
     if (insuranceService) {
-      query.insuranceService = { $regex: insuranceService, $options: 'i' };
+      const insuranceRegex = { $regex: insuranceService, $options: 'i' };
+      query.$or = [
+        { insuranceService: insuranceRegex },
+        { insuranceServices: insuranceRegex },
+      ];
     }
     
     if (assignedTo) {
@@ -83,30 +123,90 @@ exports.getAllEnrollments = async (req, res) => {
       query.priority = priority;
     }
 
+    const shouldFilterUploadReadyOnly = ['1', 'true', 'yes'].includes(
+      String(uploadReadyOnly || '').trim().toLowerCase()
+    );
+
+    if (shouldFilterUploadReadyOnly && !status) {
+      query.status = { $nin: ['submitted', 'approved'] };
+    }
+
     if (!isAdminUser(req.user)) {
       query.assignedTo = req.user._id;
+    }
+
+    if (shouldFilterUploadReadyOnly) {
+      const usedEnrollmentIds = await Document.distinct('enrollmentId', {
+        enrollmentId: { $ne: null },
+      });
+
+      if (usedEnrollmentIds.length > 0) {
+        query._id = {
+          ...(query._id && typeof query._id === 'object' ? query._id : {}),
+          $nin: usedEnrollmentIds,
+        };
+      }
     }
     
     // Execute query with pagination
     const enrollments = await Enrollment.find(query)
-      .populate('providerId', 'firstName lastName npi specialization')
+      .populate('providerId', 'clientName firstName lastName npi specialization')
       .populate('assignedTo', 'fullName email')
       .populate('createdBy', 'fullName')
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
+
+    const enrollmentIds = enrollments.map((item) => item._id);
+    const enrollmentDocuments = enrollmentIds.length
+      ? await Document.find({ enrollmentId: { $in: enrollmentIds } })
+          .select('enrollmentId documentType fileName metadata')
+          .sort({ createdAt: -1 })
+          .lean()
+      : [];
+
+    const documentsByEnrollmentId = new Map();
+    for (const document of enrollmentDocuments) {
+      const key = String(document.enrollmentId || '');
+      if (!key) continue;
+
+      if (!documentsByEnrollmentId.has(key)) {
+        documentsByEnrollmentId.set(key, []);
+      }
+
+      documentsByEnrollmentId.get(key).push(document);
+    }
+
+    const enrollmentsWithDocumentState = enrollments.map((item) => {
+      const enrollmentKey = String(item._id);
+      const enrollmentDocs = documentsByEnrollmentId.get(enrollmentKey) || [];
+      const documentCount = enrollmentDocs.length;
+      const computedProgress = Enrollment.computeProgressFromDocuments(enrollmentDocs);
+
+      return {
+        ...item.toObject(),
+        progressPercentage: computedProgress,
+        documentsCount: documentCount,
+        hasUploadedDocuments: documentCount > 0,
+      };
+    });
     
     // Get total count
     const total = await Enrollment.countDocuments(query);
     
     // If search term provided, filter by provider name
-    let filteredEnrollments = enrollments;
+    let filteredEnrollments = enrollmentsWithDocumentState;
     if (search) {
-      filteredEnrollments = enrollments.filter(enrollment => {
+      filteredEnrollments = enrollmentsWithDocumentState.filter(enrollment => {
         const providerName = `${enrollment.providerId?.firstName || ''} ${enrollment.providerId?.lastName || ''}`.toLowerCase();
-        const insuranceName = String(enrollment.insuranceService || '').toLowerCase();
+        const clientName = String(
+          enrollment.enrollmentProfile?.clientName || enrollment.providerId?.clientName || ''
+        ).toLowerCase();
+        const insuranceName = Array.isArray(enrollment.insuranceServices) && enrollment.insuranceServices.length
+          ? enrollment.insuranceServices.map((value) => String(value || '').toLowerCase()).join(' ')
+          : String(enrollment.insuranceService || '').toLowerCase();
         const searchLower = search.toLowerCase();
-        return providerName.includes(searchLower) || insuranceName.includes(searchLower);
+        return providerName.includes(searchLower) || clientName.includes(searchLower) || insuranceName.includes(searchLower);
       });
     }
     
@@ -186,14 +286,20 @@ exports.createEnrollment = async (req, res) => {
     const {
       providerId,
       insuranceService,
+      insuranceServices,
       priority,
       assignedTo,
       notes,
       providerData,
     } = req.body;
 
-    const normalizedInsuranceService = String(insuranceService || '').trim();
-    if (!normalizedInsuranceService) {
+    const normalizedInsuranceServices = Array.from(new Set(
+      (Array.isArray(insuranceServices) ? insuranceServices : [insuranceService])
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    ));
+    const normalizedInsuranceService = normalizedInsuranceServices[0] || '';
+    if (!normalizedInsuranceServices.length) {
       return res.status(400).json({
         status: 'error',
         message: 'Insurance service is required'
@@ -203,9 +309,9 @@ exports.createEnrollment = async (req, res) => {
     let resolvedProviderId = providerId;
     let enrollmentProfile = {};
     let normalizedEnrollmentNpi = '';
+    const providerPayload = providerData || {};
 
     if (!resolvedProviderId) {
-      const providerPayload = providerData || {};
       const requiredProviderFields = [
         'clientName',
         'firstName',
@@ -229,33 +335,10 @@ exports.createEnrollment = async (req, res) => {
       normalizedEnrollmentNpi = String(providerPayload.npi || '').trim();
       resolvedProviderId = null;
 
-      enrollmentProfile = {
-        clientName: String(providerPayload.clientName || '').trim(),
-        firstName: String(providerPayload.firstName || '').trim(),
-        lastName: String(providerPayload.lastName || '').trim(),
-        npi: normalizedEnrollmentNpi,
-        specialization: String(providerPayload.specialization || '').trim(),
-        providerCategory: providerPayload.providerCategory || 'Individual',
-        dateOfBirth: providerPayload.dateOfBirth || null,
-        email: String(providerPayload.email || '').trim(),
-        phone: String(providerPayload.phone || '').trim(),
-        ssn: String(providerPayload.ssn || '').trim() || null,
-        caqhId: String(providerPayload.caqhId || '').trim() || null,
-        medicarePTAN: String(providerPayload.medicarePTAN || '').trim() || null,
-        medicaidId: String(providerPayload.medicaidId || '').trim() || null,
-        licenseNumber: String(providerPayload.licenseNumber || '').trim(),
-        licenseState: String(providerPayload.licenseState || '').trim(),
-        licenseExpiryDate: providerPayload.licenseExpiryDate || null,
-        credentialLogins: {
-          pecosUsername: String(providerPayload.pecosUsername || '').trim() || null,
-          pecosPassword: String(providerPayload.pecosPassword || '').trim() || null,
-          caqhUsername: String(providerPayload.caqhUsername || '').trim() || null,
-          caqhPassword: String(providerPayload.caqhPassword || '').trim() || null,
-        },
-        insuranceServices: Array.isArray(providerPayload.insuranceServices)
-          ? providerPayload.insuranceServices.map((value) => String(value).trim()).filter(Boolean)
-          : [],
-      };
+      enrollmentProfile = buildEnrollmentProfileFromProviderData(providerPayload);
+    } else if (providerPayload && Object.keys(providerPayload).length > 0) {
+      // Preserve admin-entered snapshot (including clientName) for linked-provider enrollments.
+      enrollmentProfile = buildEnrollmentProfileFromProviderData(providerPayload);
     }
 
     const requestedAssigneeId = String(assignedTo || '').trim();
@@ -280,12 +363,18 @@ exports.createEnrollment = async (req, res) => {
     const existingEnrollmentQuery = resolvedProviderId
       ? {
           providerId: resolvedProviderId,
-          insuranceService: normalizedInsuranceService,
+          $or: [
+            { insuranceService: { $in: normalizedInsuranceServices } },
+            { insuranceServices: { $in: normalizedInsuranceServices } },
+          ],
         }
       : {
           providerId: null,
-          insuranceService: normalizedInsuranceService,
           'enrollmentProfile.npi': normalizedEnrollmentNpi,
+          $or: [
+            { insuranceService: { $in: normalizedInsuranceServices } },
+            { insuranceServices: { $in: normalizedInsuranceServices } },
+          ],
         };
 
     const existingEnrollment = await Enrollment.findOne(existingEnrollmentQuery);
@@ -293,7 +382,7 @@ exports.createEnrollment = async (req, res) => {
     if (existingEnrollment) {
       return res.status(400).json({
         status: 'error',
-        message: 'Enrollment already exists for this provider/enrollment profile and insurance service'
+        message: 'Enrollment already exists for one or more selected insurance services'
       });
     }
     
@@ -301,6 +390,7 @@ exports.createEnrollment = async (req, res) => {
     const enrollment = await Enrollment.create({
       providerId: resolvedProviderId,
       insuranceService: normalizedInsuranceService,
+      insuranceServices: normalizedInsuranceServices,
       enrollmentProfile,
       priority: priority || 'medium',
       assignedTo: assignmentUser._id,
@@ -462,17 +552,7 @@ exports.updateEnrollment = async (req, res) => {
 // @access  Private (Admin only)
 exports.deleteEnrollment = async (req, res) => {
   try {
-    // Check if enrollment has documents
-    const documentsCount = await Document.countDocuments({ enrollmentId: req.params.id });
-    
-    if (documentsCount > 0) {
-      return res.status(400).json({
-        status: 'error',
-        message: `Cannot delete enrollment with ${documentsCount} document(s). Delete documents first.`
-      });
-    }
-    
-    const enrollment = await Enrollment.findByIdAndDelete(req.params.id);
+    const enrollment = await Enrollment.findById(req.params.id);
     
     if (!enrollment) {
       return res.status(404).json({
@@ -480,10 +560,32 @@ exports.deleteEnrollment = async (req, res) => {
         message: 'Enrollment not found'
       });
     }
+
+    const linkedDocuments = await Document.find({ enrollmentId: enrollment._id })
+      .select('_id fileKey');
+
+    for (const doc of linkedDocuments) {
+      if (!doc.fileKey) continue;
+
+      try {
+        await googleDriveOAuthService.deleteFile(doc.fileKey);
+      } catch (storageError) {
+        console.error(`Storage deletion warning for document ${doc._id}:`, storageError);
+      }
+    }
+
+    const deletedDocumentsResult = await Document.deleteMany({ enrollmentId: enrollment._id });
+    const deletedRemindersResult = await Reminder.deleteMany({ enrollmentId: enrollment._id });
+
+    await enrollment.deleteOne();
     
     res.status(200).json({
       status: 'success',
-      message: 'Enrollment deleted successfully'
+      message: 'Enrollment deleted successfully',
+      data: {
+        deletedDocuments: deletedDocumentsResult.deletedCount || 0,
+        deletedReminders: deletedRemindersResult.deletedCount || 0,
+      }
     });
   } catch (error) {
     console.error('Delete enrollment error:', error);
@@ -509,6 +611,17 @@ exports.updateEnrollmentStatus = async (req, res) => {
         message: 'Enrollment not found'
       });
     }
+
+    const requiresUploadedDocuments = ['submitted', 'approved', 'rejected'].includes(String(status || '').toLowerCase());
+    if (requiresUploadedDocuments) {
+      const uploadedDocumentsCount = await Document.countDocuments({ enrollmentId: enrollment._id });
+      if (uploadedDocumentsCount === 0) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Waiting for documents upload before this status update'
+        });
+      }
+    }
     
     const oldStatus = enrollment.status;
     enrollment.status = status;
@@ -520,7 +633,6 @@ exports.updateEnrollmentStatus = async (req, res) => {
     
     if (status === 'approved') {
       enrollment.approvalDate = new Date();
-      enrollment.progressPercentage = 100;
     }
     
     await enrollment.save();

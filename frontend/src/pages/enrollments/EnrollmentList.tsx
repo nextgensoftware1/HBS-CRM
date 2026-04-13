@@ -8,13 +8,18 @@ import { authService } from '../../services/authService';
 
 type EnrollmentRow = {
 	_id: string;
-	providerId: { firstName?: string; lastName?: string } | string;
+	providerId: { clientName?: string; firstName?: string; lastName?: string } | string;
 	enrollmentProfile?: {
+		clientName?: string;
 		firstName?: string;
 		lastName?: string;
 		npi?: string;
+		insuranceServices?: string[];
 	};
 	insuranceService?: string;
+	insuranceServices?: string[];
+	documentsCount?: number;
+	hasUploadedDocuments?: boolean;
 	assignedTo?: { _id?: string; fullName?: string; email?: string } | string | null;
 	status: string;
 	priority: string;
@@ -235,38 +240,37 @@ export default function EnrollmentList() {
 
 		setCreatingEnrollment(true);
 		try {
-			for (const insurance of selectedProviderInsurances) {
-				await enrollmentService.createEnrollment({
-					providerId: createForm.providerId as any,
-					insuranceService: insurance as any,
-					priority: createForm.priority as any,
-					assignedTo: createForm.assignedTo as any,
-					notes: createForm.notes || undefined,
-					providerData: {
-						clientName: createForm.clientName,
-						firstName: createForm.firstName,
-						lastName: createForm.lastName,
-						npi: createForm.npi,
-						specialization: createForm.specialization,
-						providerCategory: createForm.providerCategory,
-						dateOfBirth: createForm.dateOfBirth || null,
-						email: createForm.email,
-						phone: createForm.phone,
-						ssn: createForm.ssn,
-						caqhId: createForm.caqhId,
-						medicarePTAN: createForm.medicarePTAN,
-						medicaidId: createForm.medicaidId,
-						licenseNumber: createForm.licenseNumber,
-						licenseState: createForm.licenseState,
-						licenseExpiryDate: createForm.licenseExpiryDate,
-						pecosUsername: createForm.pecosUsername,
-						pecosPassword: createForm.pecosPassword,
-						caqhUsername: createForm.caqhUsername,
-						caqhPassword: createForm.caqhPassword,
-						insuranceServices: selectedProviderInsurances,
-					},
-				} as any);
-			}
+			await enrollmentService.createEnrollment({
+				providerId: createForm.providerId as any,
+				insuranceService: selectedProviderInsurances[0] as any,
+				insuranceServices: selectedProviderInsurances as any,
+				priority: createForm.priority as any,
+				assignedTo: createForm.assignedTo as any,
+				notes: createForm.notes || undefined,
+				providerData: {
+					clientName: createForm.clientName,
+					firstName: createForm.firstName,
+					lastName: createForm.lastName,
+					npi: createForm.npi,
+					specialization: createForm.specialization,
+					providerCategory: createForm.providerCategory,
+					dateOfBirth: createForm.dateOfBirth || null,
+					email: createForm.email,
+					phone: createForm.phone,
+					ssn: createForm.ssn,
+					caqhId: createForm.caqhId,
+					medicarePTAN: createForm.medicarePTAN,
+					medicaidId: createForm.medicaidId,
+					licenseNumber: createForm.licenseNumber,
+					licenseState: createForm.licenseState,
+					licenseExpiryDate: createForm.licenseExpiryDate,
+					pecosUsername: createForm.pecosUsername,
+					pecosPassword: createForm.pecosPassword,
+					caqhUsername: createForm.caqhUsername,
+					caqhPassword: createForm.caqhPassword,
+					insuranceServices: selectedProviderInsurances,
+				},
+			} as any);
 
 			setCreateForm({
 				providerId: '',
@@ -297,7 +301,7 @@ export default function EnrollmentList() {
 			setSelectedProviderInsurances([]);
 			setIsCreateModalOpen(false);
 			await loadEnrollments();
-			setSuccessMessage(`${selectedProviderInsurances.length} enrollment(s) created successfully`);
+			setSuccessMessage(`Enrollment created successfully with ${selectedProviderInsurances.length} insurance service(s)`);
 		} catch (err: any) {
 			setError(err.response?.data?.message || 'Failed to create enrollment. Enrollment does not create provider records.');
 		} finally {
@@ -314,7 +318,7 @@ export default function EnrollmentList() {
 		const providerName = typeof enrollment.providerId === 'object'
 			? `${enrollment.providerId.firstName || ''} ${enrollment.providerId.lastName || ''}`.trim()
 			: 'this provider';
-		const insuranceName = enrollment.insuranceService || 'Insurance Service';
+		const insuranceName = getEnrollmentInsuranceLabel(enrollment);
 
 		const confirmed = window.confirm(`Delete enrollment for ${providerName} / ${insuranceName}?`);
 		if (!confirmed) return;
@@ -357,6 +361,51 @@ export default function EnrollmentList() {
 		const profile = enrollment.enrollmentProfile || {};
 		const profileName = `${profile.firstName || ''} ${profile.lastName || ''}`.trim();
 		return profileName || profile.npi || 'N/A';
+	};
+
+	const getEnrollmentClientLabel = (enrollment: EnrollmentRow) => {
+		const profileClientName = String(enrollment.enrollmentProfile?.clientName || '').trim();
+		if (profileClientName) {
+			return profileClientName;
+		}
+
+		if (typeof enrollment.providerId === 'object' && enrollment.providerId) {
+			const providerClientName = String(enrollment.providerId.clientName || '').trim();
+			if (providerClientName) {
+				return providerClientName;
+			}
+		}
+
+		return 'N/A';
+	};
+
+	const getEnrollmentInsuranceLabel = (enrollment: EnrollmentRow) => {
+		const values = Array.from(new Set(
+			[
+				...(Array.isArray(enrollment.insuranceServices) ? enrollment.insuranceServices : []),
+				...(Array.isArray(enrollment.enrollmentProfile?.insuranceServices) ? enrollment.enrollmentProfile.insuranceServices : []),
+				enrollment.insuranceService || '',
+			]
+				.map((value) => String(value || '').trim())
+				.filter(Boolean)
+		));
+
+		return values.length ? values.join(', ') : 'N/A';
+	};
+
+	const hasEnrollmentDocuments = (enrollment: EnrollmentRow) => {
+		if (typeof enrollment.hasUploadedDocuments === 'boolean') {
+			return enrollment.hasUploadedDocuments;
+		}
+
+		return Number(enrollment.documentsCount || 0) > 0;
+	};
+
+	const getProgressBarClass = (value: number) => {
+		if (value >= 80) return 'bg-emerald-500';
+		if (value >= 50) return 'bg-blue-500';
+		if (value >= 20) return 'bg-amber-500';
+		return 'bg-rose-400';
 	};
 
 	const closeActionModal = () => {
@@ -423,6 +472,7 @@ export default function EnrollmentList() {
 						<thead className="bg-gray-50">
 							<tr>
 								<th className="px-4 py-3 text-left font-medium text-gray-700">Provider</th>
+								<th className="px-4 py-3 text-left font-medium text-gray-700">Client Name</th>
 								<th className="px-4 py-3 text-left font-medium text-gray-700">Insurance Service</th>
 								{isAdmin && <th className="px-4 py-3 text-left font-medium text-gray-700">Assigned User</th>}
 								<th className="px-4 py-3 text-left font-medium text-gray-700">Status</th>
@@ -433,11 +483,12 @@ export default function EnrollmentList() {
 						</thead>
 						<tbody>
 							{enrollments.length === 0 ? (
-								<tr><td className="px-4 py-4 text-gray-500" colSpan={isAdmin ? 7 : 5}>No enrollments found.</td></tr>
+								<tr><td className="px-4 py-4 text-gray-500" colSpan={isAdmin ? 8 : 6}>No enrollments found.</td></tr>
 							) : enrollments.map((enrollment) => (
 								<tr key={enrollment._id} className="border-t border-gray-100">
 									<td className="px-4 py-3 text-gray-900">{getEnrollmentProviderLabel(enrollment)}</td>
-									<td className="px-4 py-3 text-gray-700">{enrollment.insuranceService || 'N/A'}</td>
+									<td className="px-4 py-3 text-gray-700">{getEnrollmentClientLabel(enrollment)}</td>
+									<td className="px-4 py-3 text-gray-700">{getEnrollmentInsuranceLabel(enrollment)}</td>
 									{isAdmin && (
 										<td className="px-4 py-3 text-gray-700">
 											<div className="leading-tight">
@@ -450,18 +501,34 @@ export default function EnrollmentList() {
 									)}
 									<td className="px-4 py-3"><span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{enrollment.status}</span></td>
 									<td className="px-4 py-3 text-gray-700">{enrollment.priority}</td>
-									<td className="px-4 py-3 text-gray-700">{enrollment.progressPercentage || 0}%</td>
+									<td className="px-4 py-3 text-gray-700">
+										<div className="w-28">
+											<div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+												<div
+													className={`h-full rounded-full transition-all ${getProgressBarClass(Number(enrollment.progressPercentage || 0))}`}
+													style={{ width: `${Math.max(0, Math.min(100, Number(enrollment.progressPercentage || 0)))}%` }}
+												/>
+											</div>
+											<p className="mt-1 text-xs text-gray-600">{Math.round(Number(enrollment.progressPercentage || 0))}%</p>
+										</div>
+									</td>
 									{isAdmin && (
 										<td className="px-4 py-3">
 											<div className="flex flex-wrap gap-2">
-												{enrollment.status !== 'submitted' && (
-													<button onClick={() => openActionModal(enrollment._id, 'submitted')} className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-700">Submit</button>
-												)}
-												{enrollment.status !== 'approved' && (
-													<button onClick={() => openActionModal(enrollment._id, 'approved')} className="px-2 py-1 text-xs rounded bg-emerald-100 text-emerald-700">Approve</button>
-												)}
-												{enrollment.status !== 'rejected' && (
-													<button onClick={() => openActionModal(enrollment._id, 'rejected')} className="px-2 py-1 text-xs rounded bg-rose-100 text-rose-700">Reject</button>
+												{hasEnrollmentDocuments(enrollment) ? (
+													<>
+														{enrollment.status !== 'submitted' && (
+															<button onClick={() => openActionModal(enrollment._id, 'submitted')} className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-700">Submit</button>
+														)}
+														{enrollment.status !== 'approved' && (
+															<button onClick={() => openActionModal(enrollment._id, 'approved')} className="px-2 py-1 text-xs rounded bg-emerald-100 text-emerald-700">Approve</button>
+														)}
+														{enrollment.status !== 'rejected' && (
+															<button onClick={() => openActionModal(enrollment._id, 'rejected')} className="px-2 py-1 text-xs rounded bg-rose-100 text-rose-700">Reject</button>
+														)}
+													</>
+												) : (
+													<span className="px-2 py-1 text-xs rounded bg-amber-100 text-amber-700">Waiting for documents</span>
 												)}
 												<button
 													onClick={() => handleDeleteEnrollment(enrollment)}

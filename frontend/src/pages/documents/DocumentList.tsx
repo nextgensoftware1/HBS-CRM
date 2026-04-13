@@ -16,6 +16,7 @@ type DocumentRow = {
 	uploadedBy?: { _id?: string; fullName?: string; email?: string } | string;
 	metadata?: {
 		insuranceService?: string;
+		onboardingData?: Record<string, any>;
 	};
 	providerSummary?: string | null;
 	createdAt: string | Date;
@@ -160,6 +161,76 @@ export default function DocumentList() {
 		}
 	};
 
+	const getProgressBarClass = (value: number) => {
+		if (value >= 80) return 'bg-emerald-500';
+		if (value >= 50) return 'bg-blue-500';
+		if (value >= 20) return 'bg-amber-500';
+		return 'bg-rose-400';
+	};
+
+	const getSubmissionProgress = (doc: DocumentRow) => {
+		const fileSlots = 9;
+		const uploadedFiles = Math.max(1, Number(doc.filesCount || 1));
+		const documentsRatio = Math.min(uploadedFiles / fileSlots, 1);
+
+		const onboardingData = doc.metadata?.onboardingData || {};
+		const requiredTextFields = [
+			'legalName',
+			'taxId',
+			'npi',
+			'specialty',
+			'practiceAddress',
+			'mailingAddress',
+			'billingAddress',
+			'phone',
+			'email',
+			'authorizedPersonName',
+			'authorizedPersonPhone',
+			'authorizedPersonEmail',
+			'medicareId',
+			'medicaidId',
+			'nppesLogin',
+			'caqhLogin',
+			'avilityLogin',
+		];
+
+		let checksTotal = 0;
+		let checksPassed = 0;
+
+		for (const fieldName of requiredTextFields) {
+			checksTotal += 1;
+			if (String(onboardingData[fieldName] || '').trim()) {
+				checksPassed += 1;
+			}
+		}
+
+		checksTotal += 1;
+		if (String(onboardingData.providerType || '').trim()) {
+			checksPassed += 1;
+		}
+
+		checksTotal += 1;
+		if (String(onboardingData.enrollmentType || '').trim()) {
+			checksPassed += 1;
+		}
+
+		const services = onboardingData.services || {};
+		checksTotal += 1;
+		if (services.outPatient || services.inPatient || services.emergency || services.other) {
+			checksPassed += 1;
+		}
+
+		if (services.other) {
+			checksTotal += 1;
+			if (String(services.otherDescription || '').trim()) {
+				checksPassed += 1;
+			}
+		}
+
+		const formRatio = checksTotal > 0 ? (checksPassed / checksTotal) : 0;
+		return Math.max(0, Math.min(100, Math.round(((documentsRatio * 0.7) + (formRatio * 0.3)) * 100)));
+	};
+
 	const actionBtnClass = 'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md font-medium transition-colors';
 
 	const confirmAction = async (note?: string) => {
@@ -259,6 +330,16 @@ export default function DocumentList() {
 
 								<div className="grid grid-cols-1 gap-2 text-sm">
 									<p className="text-gray-700 break-words"><span className="text-gray-500">Provider:</span> {getProviderColumnValue(doc)}</p>
+									<div>
+										<p className="text-xs text-gray-500">Progress</p>
+										<div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-gray-200">
+											<div
+												className={`h-full rounded-full ${getProgressBarClass(getSubmissionProgress(doc))}`}
+												style={{ width: `${getSubmissionProgress(doc)}%` }}
+											/>
+										</div>
+										<p className="text-xs text-gray-600 mt-1">{getSubmissionProgress(doc)}%</p>
+									</div>
 									{isAdmin && (
 										<p className="text-gray-700 break-words"><span className="text-gray-500">Submitted By:</span> {getSubmittedByDisplayName(doc.uploadedBy)}</p>
 									)}
@@ -310,6 +391,7 @@ export default function DocumentList() {
 								<th className="px-4 py-3 text-left font-semibold text-slate-700">File</th>
 								<th className="px-4 py-3 text-left font-semibold text-slate-700">Provider</th>
 								{isAdmin && <th className="px-4 py-3 text-left font-semibold text-slate-700">Submitted By</th>}
+								<th className="px-4 py-3 text-left font-semibold text-slate-700">Progress</th>
 								<th className="px-4 py-3 text-left font-semibold text-slate-700">Status</th>
 								<th className="px-4 py-3 text-left font-semibold text-slate-700">Uploaded</th>
 								<th className="px-4 py-3 text-left font-semibold text-slate-700">Actions</th>
@@ -317,7 +399,7 @@ export default function DocumentList() {
 						</thead>
 						<tbody>
 							{documents.length === 0 ? (
-								<tr><td className="px-4 py-4 text-slate-500" colSpan={isAdmin ? 7 : 6}>No documents found.</td></tr>
+								<tr><td className="px-4 py-4 text-slate-500" colSpan={isAdmin ? 8 : 7}>No documents found.</td></tr>
 							) : documents.map((doc) => (
 								<tr key={doc._id} className="border-t border-slate-100 hover:bg-slate-50/50 transition-colors">
 									<td className="px-4 py-3 text-slate-900 font-medium">{doc.documentType}</td>
@@ -337,6 +419,15 @@ export default function DocumentList() {
 											{getSubmittedByDisplayName(doc.uploadedBy)}
 										</td>
 									)}
+									<td className="px-4 py-3 text-slate-700 min-w-[140px]">
+										<div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+											<div
+												className={`h-full rounded-full ${getProgressBarClass(getSubmissionProgress(doc))}`}
+												style={{ width: `${getSubmissionProgress(doc)}%` }}
+											/>
+										</div>
+										<p className="mt-1 text-xs text-slate-600">{getSubmissionProgress(doc)}%</p>
+									</td>
 									<td className="px-4 py-3"><span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${statusBadgeClass(doc.status)}`}>{doc.status}</span></td>
 									<td className="px-4 py-3 text-slate-700">{new Date(doc.createdAt).toLocaleDateString()}</td>
 									<td className="px-4 py-3">

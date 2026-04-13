@@ -2,10 +2,22 @@
 const sgMail = require('@sendgrid/mail');
 
 // Configure SendGrid
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+const sendGridApiKey = String(process.env.SENDGRID_API_KEY || '').trim();
+const hasValidSendGridKey = sendGridApiKey.startsWith('SG.');
+
+if (hasValidSendGridKey) {
+  sgMail.setApiKey(sendGridApiKey);
+} else {
+  console.warn('⚠️ SendGrid disabled: missing or invalid SENDGRID_API_KEY (must start with "SG.")');
+}
 
 const fromEmail = process.env.SENDGRID_FROM_EMAIL;
 const fromName = process.env.SENDGRID_FROM_NAME;
+
+const ensureSendGridConfigured = () => {
+  if (hasValidSendGridKey) return;
+  throw new Error('SendGrid is not configured. Set a valid SENDGRID_API_KEY that starts with "SG."');
+};
 
 /**
  * Send reminder email for missing documents
@@ -13,6 +25,8 @@ const fromName = process.env.SENDGRID_FROM_NAME;
  */
 exports.sendMissingDocumentReminder = async (data) => {
   try {
+    ensureSendGridConfigured();
+
     const { toEmail, providerName, documentType, clientName } = data;
     
     const msg = {
@@ -66,6 +80,8 @@ exports.sendMissingDocumentReminder = async (data) => {
  */
 exports.sendExpiringCredentialReminder = async (data) => {
   try {
+    ensureSendGridConfigured();
+
     const { toEmail, providerName, documentType, expiryDate, daysUntilExpiry } = data;
     
     const msg = {
@@ -120,6 +136,8 @@ exports.sendExpiringCredentialReminder = async (data) => {
  */
 exports.sendEnrollmentStatusUpdate = async (data) => {
   try {
+    ensureSendGridConfigured();
+
     const { toEmail, providerName, insuranceService, oldStatus, newStatus } = data;
     const insuranceLabel = insuranceService || 'Insurance Service';
     
@@ -173,6 +191,8 @@ exports.sendEnrollmentStatusUpdate = async (data) => {
  */
 exports.sendWelcomeEmail = async (data) => {
   try {
+    ensureSendGridConfigured();
+
     const { toEmail, userName } = data;
     
     const msg = {
@@ -220,6 +240,8 @@ exports.sendWelcomeEmail = async (data) => {
  */
 exports.sendNotification = async (data) => {
   try {
+    ensureSendGridConfigured();
+
     const { toEmail, subject, message } = data;
     
     const msg = {

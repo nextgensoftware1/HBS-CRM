@@ -622,10 +622,14 @@ exports.uploadDocument = async (req, res) => {
     
     try {
       const driveAccessible = await googleDriveOAuthService.checkDriveAccess();
-      if (!driveAccessible) {
+      const allowLocalFallback = typeof googleDriveOAuthService.isLocalFallbackEnabled === 'function'
+        ? googleDriveOAuthService.isLocalFallbackEnabled()
+        : false;
+
+      if (!driveAccessible && !allowLocalFallback) {
         return res.status(503).json({
           status: 'error',
-          message: 'Google Drive storage is not configured correctly. Please set valid service account credentials before uploading documents.'
+          message: 'Google Drive is not connected yet. Please connect admin Google account first.'
         });
       }
 
@@ -661,7 +665,7 @@ exports.uploadDocument = async (req, res) => {
         }
 
         validatedEnrollment = await Enrollment.findById(enrollmentId)
-          .select('providerId assignedTo')
+          .select('providerId assignedTo status')
           .lean();
 
         if (!validatedEnrollment) {
@@ -676,6 +680,27 @@ exports.uploadDocument = async (req, res) => {
             status: 'error',
             message: 'You can only upload documents for enrollments assigned to you'
           });
+        }
+
+        const enrollmentStatus = String(validatedEnrollment.status || '').toLowerCase();
+        if (['submitted', 'approved'].includes(enrollmentStatus)) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'This enrollment is already completed and cannot accept new submissions'
+          });
+        }
+
+        if (!replaceDocumentId) {
+          const existingEnrollmentDocuments = await Document.countDocuments({
+            enrollmentId,
+          });
+
+          if (existingEnrollmentDocuments > 0) {
+            return res.status(400).json({
+              status: 'error',
+              message: 'Documents were already submitted for this enrollment'
+            });
+          }
         }
       }
       

@@ -1,0 +1,10 @@
+{
+  "watch": ["src"],
+  "ext": "js,mjs,cjs,json",
+  "ignore": [
+    "credentials/google-oauth-token.json",
+    "uploads/**",
+    "node_modules/**",
+    ".git/**"
+  ]
+}

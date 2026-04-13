@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { providerService } from '../../services/providerService';
 import { documentService } from '../../services/documentService';
@@ -33,6 +33,7 @@ type InsuranceSelection = {
 type AssignedEnrollmentOption = {
   _id: string;
   insuranceService: string;
+  insuranceServices?: string[];
   providerId?: {
     _id?: string;
     firstName?: string;
@@ -194,30 +195,32 @@ export default function DocumentUpload() {
     }
   }, [isAdmin, selectedIntakeOption]);
 
-  useEffect(() => {
+  const loadAssignedEnrollments = useCallback(async () => {
     if (isAdmin) {
       setLoadingAssignedEnrollments(false);
       return;
     }
 
-    const loadAssignedEnrollments = async () => {
-      try {
-        const response = await enrollmentService.getEnrollments(1, 300);
-        const items = (response.items || []) as unknown as AssignedEnrollmentOption[];
-        setAssignedEnrollments(items);
+    try {
+      const response = await enrollmentService.getEnrollments(1, 300, { uploadReadyOnly: true });
+      const items = (response.items || []) as unknown as AssignedEnrollmentOption[];
+      setAssignedEnrollments(items);
 
-        if (items.length > 0) {
-          setSelectedEnrollmentId((prev) => prev || items[0]._id);
-        }
-      } catch (err: any) {
-        setError(err.response?.data?.message || 'Failed to load assigned enrollments');
-      } finally {
-        setLoadingAssignedEnrollments(false);
-      }
-    };
-
-    loadAssignedEnrollments();
+      setSelectedEnrollmentId((prev) => {
+        if (!items.length) return '';
+        const previousStillExists = items.some((entry) => entry._id === prev);
+        return previousStillExists ? prev : items[0]._id;
+      });
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to load assigned enrollments');
+    } finally {
+      setLoadingAssignedEnrollments(false);
+    }
   }, [isAdmin]);
+
+  useEffect(() => {
+    loadAssignedEnrollments();
+  }, [loadAssignedEnrollments]);
 
   useEffect(() => {
     const loadProviders = async () => {
@@ -323,6 +326,24 @@ export default function DocumentUpload() {
   const selectedAssignedEnrollment = useMemo(
     () => assignedEnrollments.find((entry) => entry._id === selectedEnrollmentId) || null,
     [assignedEnrollments, selectedEnrollmentId]
+  );
+
+  const getAssignedEnrollmentInsurances = (entry: AssignedEnrollmentOption | null) => {
+    if (!entry) return [] as string[];
+
+    return Array.from(new Set(
+      [
+        ...(Array.isArray(entry.insuranceServices) ? entry.insuranceServices : []),
+        entry.insuranceService || '',
+      ]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    ));
+  };
+
+  const selectedAssignedEnrollmentInsurances = useMemo(
+    () => getAssignedEnrollmentInsurances(selectedAssignedEnrollment),
+    [selectedAssignedEnrollment]
   );
 
   const checklistVisible = isAdmin
@@ -445,7 +466,7 @@ export default function DocumentUpload() {
 
         resolvedProviderId = providerId;
         resolvedEnrollmentId = selectedAssignedEnrollment._id;
-        resolvedInsuranceService = String(selectedAssignedEnrollment.insuranceService || '').trim();
+        resolvedInsuranceService = selectedAssignedEnrollmentInsurances.join(', ');
 
         if (typeof provider === 'object' && provider) {
           if (provider.clientId && typeof provider.clientId === 'object') {
@@ -483,6 +504,10 @@ export default function DocumentUpload() {
       setSuccess(`${filesToUpload.length} document(s) uploaded successfully`);
       setFormData(initialFormData);
       setSelectedInsuranceKeys([]);
+
+      if (!isAdmin) {
+        await loadAssignedEnrollments();
+      }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to upload documents');
     } finally {
@@ -591,7 +616,7 @@ export default function DocumentUpload() {
           ) : loadingAssignedEnrollments ? (
             <p className="text-sm text-gray-600">Loading assigned enrollments...</p>
           ) : assignedEnrollments.length === 0 ? (
-            <p className="text-sm text-amber-700 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">No enrollments are assigned to you yet. Ask admin to assign an enrollment first.</p>
+            <p className="text-sm text-amber-700 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">No upload-eligible enrollments found. Deleted enrollments or enrollments with already submitted documents are hidden.</p>
           ) : (
             <div className="space-y-2">
               {assignedEnrollments.map((entry) => {
@@ -599,6 +624,7 @@ export default function DocumentUpload() {
                 const providerName = typeof provider === 'object' && provider
                   ? `${provider.firstName || ''} ${provider.lastName || ''}`.trim() || provider.npi || 'Provider'
                   : 'Provider';
+                const insuranceLabel = getAssignedEnrollmentInsurances(entry).join(', ') || 'N/A';
 
                 return (
                   <label
@@ -607,7 +633,7 @@ export default function DocumentUpload() {
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-slate-900 truncate">{providerName}</p>
-                      <p className="text-xs text-slate-600 truncate">{entry.insuranceService}</p>
+                      <p className="text-xs text-slate-600 truncate">{insuranceLabel}</p>
                     </div>
                     <input
                       type="radio"
@@ -638,7 +664,7 @@ export default function DocumentUpload() {
 
             <div className="rounded-xl border border-slate-200 p-3 bg-slate-50 text-sm text-slate-700">
               <p><span className="font-semibold">Intake Type:</span> {selectedIntakeOption || 'N/A'}</p>
-              <p><span className="font-semibold">Selected Insurance Items:</span> {selectedInsuranceSelections.length}</p>
+              <p><span className="font-semibold">Selected Insurance Items:</span> {isAdmin ? selectedInsuranceSelections.length : selectedAssignedEnrollmentInsurances.length}</p>
             </div>
 
             <div className="space-y-3 border border-slate-200 rounded-xl p-4">

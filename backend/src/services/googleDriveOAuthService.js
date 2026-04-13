@@ -4,11 +4,55 @@ const path = require('path');
 const { Readable } = require('stream');
 
 const TOKEN_PATH = path.join(__dirname, '../../credentials/google-oauth-token.json');
+const LOCAL_UPLOADS_DIR = path.join(__dirname, '../../uploads/documents');
 const normalizeFolderId = (folderValue) => {
   if (!folderValue) return null;
   const match = folderValue.match(/folders\/([a-zA-Z0-9_-]+)/);
   return match ? match[1] : folderValue.trim();
 };
+
+const isLocalFileKey = (fileKey) => typeof fileKey === 'string' && fileKey.startsWith('local:');
+const localPathFromKey = (fileKey) => fileKey.replace(/^local:/, '');
+
+const publicBaseUrl = () => process.env.BACKEND_PUBLIC_URL || `http://localhost:${process.env.PORT || 5000}`;
+
+const localPublicUrlFromRelativePath = (relativePath) => {
+  const normalized = String(relativePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  return `${publicBaseUrl()}/${normalized}`;
+};
+
+const localFallbackEnabled = () => {
+  const envFlag = String(process.env.GOOGLE_DRIVE_FALLBACK_LOCAL || '').toLowerCase();
+  if (envFlag === 'true') return true;
+  if (envFlag === 'false') {
+    // In local/dev environments, keep temporary fallback active to avoid blocking uploads.
+    return process.env.NODE_ENV !== 'production';
+  }
+  return true;
+};
+
+const saveFileLocally = (fileBuffer, fileName) => {
+  fs.mkdirSync(LOCAL_UPLOADS_DIR, { recursive: true });
+
+  const timestamp = Date.now();
+  const safeName = `${timestamp}-${fileName}`.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const fullPath = path.join(LOCAL_UPLOADS_DIR, safeName);
+  fs.writeFileSync(fullPath, fileBuffer);
+
+  const relativePath = path.join('uploads', 'documents', safeName).replace(/\\/g, '/');
+  const fileUrl = localPublicUrlFromRelativePath(relativePath);
+
+  return {
+    success: true,
+    fileId: `local:${relativePath}`,
+    fileKey: `local:${relativePath}`,
+    fileUrl,
+    downloadUrl: fileUrl,
+    fileName: safeName,
+  };
+};
+
+exports.isLocalFallbackEnabled = localFallbackEnabled;
 
 const getOAuth2Client = () => {
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
@@ -97,7 +141,16 @@ exports.checkDriveAccess = async () => {
 };
 
 exports.uploadFileToAdminDrive = async (fileBuffer, fileName, mimeType) => {
-  const drive = await exports.getDriveClient();
+  let drive;
+  try {
+    drive = await exports.getDriveClient();
+  } catch (error) {
+    if (localFallbackEnabled()) {
+      console.warn('Google Drive is not connected. Falling back to local document storage.');
+      return saveFileLocally(fileBuffer, fileName);
+    }
+    throw error;
+  }
 
   const folderId = normalizeFolderId(process.env.GOOGLE_DRIVE_FOLDER_ID || '');
 
@@ -131,6 +184,20 @@ exports.uploadFileToAdminDrive = async (fileBuffer, fileName, mimeType) => {
 };
 
 exports.deleteFile = async (fileId) => {
+  if (isLocalFileKey(fileId)) {
+    const relativePath = localPathFromKey(fileId);
+    const fullPath = path.join(__dirname, '../../', relativePath);
+
+    if (fs.existsSync(fullPath)) {
+      fs.unlinkSync(fullPath);
+    }
+
+    return {
+      success: true,
+      message: 'Local file deleted successfully',
+    };
+  }
+
   const drive = await exports.getDriveClient();
   await drive.files.delete({
     fileId,
@@ -144,6 +211,30 @@ exports.deleteFile = async (fileId) => {
 };
 
 exports.getFileMetadata = async (fileId) => {
+  if (isLocalFileKey(fileId)) {
+    const relativePath = localPathFromKey(fileId);
+    const fullPath = path.join(__dirname, '../../', relativePath);
+
+    if (!fs.existsSync(fullPath)) {
+      throw new Error('Local file not found');
+    }
+
+    const stats = fs.statSync(fullPath);
+    const fileUrl = localPublicUrlFromRelativePath(relativePath);
+
+    return {
+      success: true,
+      file: {
+        id: fileId,
+        name: path.basename(fullPath),
+        size: stats.size,
+        createdTime: stats.birthtime,
+        webViewLink: fileUrl,
+        webContentLink: fileUrl,
+      },
+    };
+  }
+
   const drive = await exports.getDriveClient();
   const response = await drive.files.get({
     fileId,

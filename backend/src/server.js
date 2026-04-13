@@ -38,6 +38,8 @@ const migrateEnrollmentIndexes = async () => {
     // Remove stale indexes from payer-era and pre-separation uniqueness rules.
     await dropIfExists('providerId_1_payerId_1');
     await dropIfExists('providerId_1_insuranceService_1');
+    await dropIfExists('providerId_1_insuranceService_1_partial');
+    await dropIfExists('enrollmentProfile_npi_1_insuranceService_1_partial');
 
     await collection.createIndex(
       { providerId: 1, insuranceService: 1 },
@@ -54,7 +56,7 @@ const migrateEnrollmentIndexes = async () => {
         unique: true,
         partialFilterExpression: {
           providerId: null,
-          'enrollmentProfile.npi': { $type: 'string', $ne: '' },
+          'enrollmentProfile.npi': { $type: 'string' },
         },
         name: 'enrollmentProfile_npi_1_insuranceService_1_partial',
       }

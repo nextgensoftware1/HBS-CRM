@@ -106,6 +106,7 @@ export interface Enrollment {
   _id: string;
   providerId: string | Provider;
   insuranceService: string;
+  insuranceServices?: string[];
   status: EnrollmentStatus;
   currentStage: string;
   progressPercentage: number;
