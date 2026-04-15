@@ -4,6 +4,7 @@ import { FiCheck, FiChevronDown, FiChevronUp, FiClock, FiEye, FiFileText, FiRota
 import { documentService } from '../../services/documentService';
 import { reminderService } from '../../services/reminderService';
 import { useAuthStore } from '../../store/authStore';
+import { notify } from '../../utils/notify';
 
 type SubmissionFile = {
   _id: string;
@@ -73,7 +74,6 @@ export default function DocumentSubmissionDetail() {
   const isAdmin = user?.role === 'admin';
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [submission, setSubmission] = useState<SubmissionDetail | null>(null);
   const [actionLoadingFileId, setActionLoadingFileId] = useState<string | null>(null);
   const [selectedReuploadFiles, setSelectedReuploadFiles] = useState<Record<string, File | null>>({});
@@ -152,9 +152,15 @@ export default function DocumentSubmissionDetail() {
     }
   };
 
+  const formatStatusLabel = (status: string) => String(status || '').replace(/_/g, ' ') || 'pending';
+
+  const actionBtnClass = 'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg font-medium whitespace-nowrap';
+
   const loadSubmission = async (showPageLoader = false) => {
     if (!id) {
-      setError('Submission ID missing');
+      const message = 'Submission ID missing';
+      setError(message);
+      notify.errorOnce(message, 'document-submission-id-missing');
       setLoading(false);
       return;
     }
@@ -168,7 +174,9 @@ export default function DocumentSubmissionDetail() {
       setSubmission(data);
       setError(null);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load submission details');
+      const message = err.response?.data?.message || 'Failed to load submission details';
+      setError(message);
+      notify.errorOnce(message, `document-submission-load-error-${id}`);
     } finally {
       if (showPageLoader) {
         setLoading(false);
@@ -228,7 +236,7 @@ export default function DocumentSubmissionDetail() {
         window.open(data.downloadUrl, '_blank', 'noopener,noreferrer');
       }
     } catch {
-      setError('Failed to open file');
+      notify.errorOnce('Failed to open file', `document-open-file-error-${fileId}`);
     }
   };
 
@@ -243,8 +251,11 @@ export default function DocumentSubmissionDetail() {
         false
       );
       await loadSubmission(false);
+      notify.successOnce('Document approved successfully', `document-approved-${fileId}`);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to approve document');
+      const message = err.response?.data?.message || 'Failed to approve document';
+      setError(message);
+      notify.errorOnce(message, `document-approve-error-${fileId}`);
     } finally {
       setActionLoadingFileId(null);
     }
@@ -266,8 +277,11 @@ export default function DocumentSubmissionDetail() {
         false
       );
       await loadSubmission(false);
+      notify.successOnce('Document rejected successfully', `document-rejected-${fileId}`);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to reject document');
+      const message = err.response?.data?.message || 'Failed to reject document';
+      setError(message);
+      notify.errorOnce(message, `document-reject-error-${fileId}`);
     } finally {
       setActionLoadingFileId(null);
     }
@@ -289,11 +303,12 @@ export default function DocumentSubmissionDetail() {
   const submitSingleFileReUpload = async (targetFile: SubmissionFile) => {
     const selectedFile = selectedReuploadFiles[targetFile._id];
     if (!selectedFile || !submission?.provider?._id) {
-      setError('Please select a file before submitting re-upload.');
+      const message = 'Please select a file before submitting re-upload.';
+      setError(message);
+      notify.warningOnce(message, `document-reupload-file-required-${targetFile._id}`);
       return;
     }
 
-    setSuccess(null);
     setError(null);
 
     try {
@@ -311,14 +326,16 @@ export default function DocumentSubmissionDetail() {
         onboardingData: submission.onboardingData || undefined,
       });
 
-      setSuccess(`File re-uploaded successfully for ${targetFile.documentType}.`);
+      notify.success(`File re-uploaded successfully for ${targetFile.documentType}.`);
       setSelectedReuploadFiles((prev) => ({
         ...prev,
         [targetFile._id]: null,
       }));
       await loadSubmission(false);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to re-upload file');
+      const message = err.response?.data?.message || 'Failed to re-upload file';
+      setError(message);
+      notify.error(message);
     } finally {
       setActionLoadingFileId(null);
     }
@@ -341,12 +358,16 @@ export default function DocumentSubmissionDetail() {
     const resolvedProviderId = submission?.provider?._id || submission?.providers?.[0]?._id;
     const selectedFile = selectedRequestedFiles[row.id];
     if (!selectedFile) {
-      setError('Please choose a file first for this requested document.');
+      const message = 'Please choose a file first for this requested document.';
+      setError(message);
+      notify.warningOnce(message, `document-requested-upload-file-required-${row.id}`);
       return;
     }
 
     if (!resolvedProviderId) {
-      setError('Provider context is missing. Please reopen this submission and retry.');
+      const message = 'Provider context is missing. Please reopen this submission and retry.';
+      setError(message);
+      notify.errorOnce(message, 'document-requested-upload-provider-missing');
       return;
     }
 
@@ -370,10 +391,12 @@ export default function DocumentSubmissionDetail() {
         ...prev,
         [row.id]: null,
       }));
-      setSuccess(`Uploaded requested document: ${row.label}`);
+      notify.success(`Uploaded requested document: ${row.label}`);
       await loadSubmission(false);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to upload requested missing document');
+      const message = err.response?.data?.message || 'Failed to upload requested missing document';
+      setError(message);
+      notify.error(message);
     } finally {
       setActionLoadingFileId(null);
     }
@@ -381,12 +404,14 @@ export default function DocumentSubmissionDetail() {
 
   const sendMissingDocumentRequest = async (documentLabels: string[]) => {
     if (!submission?.provider?._id || !submission?.uploadedBy?._id) {
-      setError('Cannot send request because user or provider information is missing');
+      const message = 'Cannot send request because user or provider information is missing';
+      setError(message);
+      notify.errorOnce(message, 'document-missing-request-context-missing');
       return;
     }
 
     if (!documentLabels.length) {
-      setSuccess('No missing documents to request.');
+      notify.infoOnce('No missing documents to request.', 'document-missing-request-none');
       return;
     }
 
@@ -395,7 +420,6 @@ export default function DocumentSubmissionDetail() {
     try {
       setSendingMissingRequest(true);
       setError(null);
-      setSuccess(null);
 
       const dueDate = new Date(Date.now() + (2 * 24 * 60 * 60 * 1000)).toISOString();
       const requestedLabelText = documentLabels.join(', ');
@@ -414,9 +438,11 @@ export default function DocumentSubmissionDetail() {
         },
       });
 
-      setSuccess(`Request sent to user for: ${requestedLabelText}`);
+      notify.success(`Request sent to user for: ${requestedLabelText}`);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to send missing document request');
+      const message = err.response?.data?.message || 'Failed to send missing document request';
+      setError(message);
+      notify.error(message);
     } finally {
       setSendingMissingRequest(false);
     }
@@ -437,7 +463,7 @@ export default function DocumentSubmissionDetail() {
     return <p className="text-sm text-gray-600">Loading submission details...</p>;
   }
 
-  if (error || !submission) {
+  if (!submission) {
     return (
       <div className="space-y-3">
         <p className="text-sm text-red-600">{error || 'Submission not found'}</p>
@@ -447,7 +473,7 @@ export default function DocumentSubmissionDetail() {
   }
 
   return (
-    <div className="space-y-5 w-full">
+    <div className="space-y-5 w-full max-w-7xl mx-auto">
       <div className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur p-4 sm:p-5 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
@@ -458,7 +484,6 @@ export default function DocumentSubmissionDetail() {
         </div>
       </div>
 
-      {success && <p className="text-sm text-emerald-700 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">{success}</p>}
       {error && <p className="text-sm text-red-600 rounded-lg border border-red-200 bg-red-50 px-3 py-2">{error}</p>}
 
       <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-sm">
@@ -477,6 +502,16 @@ export default function DocumentSubmissionDetail() {
         <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
           <p className="text-xs uppercase tracking-wide text-slate-500">Files</p>
           <p className="mt-1 font-semibold text-slate-900">{submission.filesCount || submission.files?.length || 0}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Submission Status</p>
+          <span className={`inline-flex mt-1 px-2 py-0.5 rounded-full border text-xs font-medium ${statusBadgeClass(submission.status || 'pending')}`}>
+            {formatStatusLabel(submission.status || 'pending')}
+          </span>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Submitted On</p>
+          <p className="mt-1 font-semibold text-slate-900">{submission.createdAt ? new Date(submission.createdAt).toLocaleDateString() : 'N/A'}</p>
         </div>
         {submission.selectedInsuranceSelections && submission.selectedInsuranceSelections.length > 0 && (
           <div className="md:col-span-2 xl:col-span-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -508,7 +543,7 @@ export default function DocumentSubmissionDetail() {
                 <p className="font-medium text-slate-900 break-all">{file.fileName}</p>
                 <p className="text-xs text-slate-600 break-words flex items-center gap-1.5"><FiClock className="h-3.5 w-3.5" /> {file.documentType} | {new Date(file.createdAt).toLocaleString()}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full border text-xs font-medium ${statusBadgeClass(file.status)}`}>{file.status}</span>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full border text-xs font-medium ${statusBadgeClass(file.status)}`}>{formatStatusLabel(file.status)}</span>
                   <span className="inline-flex px-2 py-0.5 rounded-full border text-xs font-medium bg-slate-100 text-slate-700 border-slate-200">v{file.version || 1}</span>
                   {!isLatestVersion && (
                     <span className="inline-flex px-2 py-0.5 rounded-full border text-xs font-medium bg-orange-100 text-orange-700 border-orange-200">older version</span>
@@ -519,7 +554,7 @@ export default function DocumentSubmissionDetail() {
                 <button
                   type="button"
                   onClick={() => openFile(file._id)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  className={`${actionBtnClass} bg-slate-100 text-slate-700 hover:bg-slate-200 w-full sm:w-auto justify-center`}
                   disabled={actionLoadingFileId === file._id}
                 >
                   <FiEye className="h-3.5 w-3.5" />
@@ -529,7 +564,7 @@ export default function DocumentSubmissionDetail() {
                   <button
                     type="button"
                     onClick={() => approveFile(file._id)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                    className={`${actionBtnClass} bg-emerald-100 text-emerald-700 hover:bg-emerald-200 w-full sm:w-auto justify-center`}
                     disabled={actionLoadingFileId === file._id}
                   >
                     <FiCheck className="h-3.5 w-3.5" />
@@ -540,7 +575,7 @@ export default function DocumentSubmissionDetail() {
                   <button
                     type="button"
                     onClick={() => rejectFile(file._id)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-rose-100 text-rose-700 hover:bg-rose-200"
+                    className={`${actionBtnClass} bg-rose-100 text-rose-700 hover:bg-rose-200 w-full sm:w-auto justify-center`}
                     disabled={actionLoadingFileId === file._id}
                   >
                     <FiX className="h-3.5 w-3.5" />
@@ -561,7 +596,7 @@ export default function DocumentSubmissionDetail() {
                     <button
                       type="button"
                       onClick={() => triggerReUploadPicker(file._id)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200"
+                      className={`${actionBtnClass} bg-amber-100 text-amber-700 hover:bg-amber-200 w-full sm:w-auto justify-center`}
                       disabled={actionLoadingFileId === file._id}
                     >
                       <FiRotateCcw className="h-3.5 w-3.5" />
@@ -578,7 +613,7 @@ export default function DocumentSubmissionDetail() {
                         <button
                           type="button"
                           onClick={() => submitSingleFileReUpload(file)}
-                          className="px-3 py-1.5 text-xs rounded bg-primary-600 text-white"
+                          className={`${actionBtnClass} bg-primary-600 text-white hover:bg-primary-700`}
                           disabled={actionLoadingFileId === file._id}
                         >
                           Submit
@@ -625,7 +660,7 @@ export default function DocumentSubmissionDetail() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`inline-flex w-fit px-2 py-0.5 rounded-full border text-xs font-medium ${statusBadgeClass(row.status)}`}>
-                    {row.file ? row.status : 'pending'}
+                    {formatStatusLabel(row.file ? row.status : 'pending')}
                   </span>
                   {isAdmin && !row.file && (
                     <button

@@ -1,6 +1,6 @@
 // frontend/src/components/layout/Header.tsx
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { FiBell, FiUser, FiLogOut, FiSettings, FiMenu } from 'react-icons/fi';
 import { notificationService, type AppNotification } from '../../services/notificationService';
@@ -11,6 +11,7 @@ type HeaderProps = {
 
 export default function Header({ onMenuToggle }: HeaderProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuthStore();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotificationMenu, setShowNotificationMenu] = useState(false);
@@ -25,7 +26,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
   const settingsLabel = isAdmin ? 'Admin Routes' : 'Workspace';
   const userInitial = user?.fullName?.trim()?.charAt(0)?.toUpperCase() || 'U';
   const userDisplayName = user?.fullName || 'User';
-  const userRoleLabel = user?.role?.replace('_', ' ') || 'member';
+  const userRoleLabel = user?.role?.replace(/_/g, ' ') || 'member';
 
   const handleLogout = () => {
     const logoutPath = user?.role === 'admin' ? '/admin/login' : '/login';
@@ -125,8 +126,25 @@ export default function Header({ onMenuToggle }: HeaderProps) {
     return () => window.clearInterval(intervalId);
   }, []);
 
+  useEffect(() => {
+    setShowUserMenu(false);
+    setShowNotificationMenu(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowUserMenu(false);
+        setShowNotificationMenu(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, []);
+
   return (
-    <header className="relative z-40 h-16 bg-white/90 backdrop-blur border-b border-slate-200 flex items-center justify-between px-3 sm:px-6 gap-3 shadow-[0_1px_0_0_rgba(148,163,184,.15)]">
+    <header className="sticky top-0 z-40 h-16 bg-white/90 backdrop-blur border-b border-slate-200 flex items-center justify-between px-3 sm:px-5 lg:px-6 gap-3 shadow-[0_1px_0_0_rgba(148,163,184,.15)]">
       {/* Search Bar */}
       <div className="flex flex-1 items-center gap-2 min-w-0">
         <button
@@ -141,8 +159,8 @@ export default function Header({ onMenuToggle }: HeaderProps) {
         <div className="relative flex-1 min-w-0">
           <input
             type="text"
-            placeholder="Search..."
-            className="w-full min-w-0 pl-10 pr-4 py-2 border border-slate-300 rounded-xl bg-white/90 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            placeholder="Search providers, clients, documents..."
+            className="w-full min-w-0 pl-10 pr-4 py-2 border border-slate-300 rounded-xl bg-white/90 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
           />
           <div className="absolute left-3 top-2.5">
             <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -153,15 +171,18 @@ export default function Header({ onMenuToggle }: HeaderProps) {
       </div>
 
       {/* Right Section */}
-  <div className="flex items-center space-x-1 sm:space-x-4 ml-1 sm:ml-6">
+      <div className="flex items-center space-x-1 sm:space-x-3 ml-1 sm:ml-4 lg:ml-6">
         {/* Notifications */}
         <button
           onClick={openNotifications}
           className="relative p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+          aria-label="Open notifications"
         >
           <FiBell className="h-6 w-6" />
           {unreadCount > 0 && (
-            <span className="absolute top-1 right-1 block h-2 w-2 rounded-full bg-danger-500 ring-2 ring-white"></span>
+            <span className="absolute -top-0.5 -right-0.5 min-w-[1rem] h-4 px-1 inline-flex items-center justify-center rounded-full bg-danger-500 text-white text-[10px] font-semibold ring-2 ring-white">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
           )}
         </button>
 
@@ -208,18 +229,19 @@ export default function Header({ onMenuToggle }: HeaderProps) {
               setShowUserMenu(!showUserMenu);
               setShowNotificationMenu(false);
             }}
-            className="flex items-center space-x-3 p-2 hover:bg-slate-100 rounded-xl transition-colors"
+            className="flex items-center space-x-2 sm:space-x-3 p-2 hover:bg-slate-100 rounded-xl transition-colors"
+            aria-label="Open user menu"
           >
             <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center shadow-sm shadow-primary-300/40">
               <span className="text-white text-sm font-medium">
                 {userInitial}
               </span>
             </div>
-            <div className="hidden md:block text-left">
+            <div className="hidden lg:block text-left">
               <p className="text-sm font-medium text-gray-900">{userDisplayName}</p>
               <p className="text-xs text-gray-500 capitalize">{userRoleLabel}</p>
             </div>
-            <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="hidden sm:block h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>

@@ -12,11 +12,22 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'  // ← MUST HAVE THIS
-import { Toaster } from 'react-hot-toast'
+import { ToastContainer } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
-    <Toaster position="top-right" />
+    <ToastContainer
+      position="top-right"
+      autoClose={3200}
+      newestOnTop
+      closeOnClick
+      pauseOnHover
+      draggable
+      theme="light"
+      toastClassName="rounded-xl border border-slate-200 shadow-lg"
+      bodyClassName="text-sm text-slate-800"
+    />
   </React.StrictMode>,
 )

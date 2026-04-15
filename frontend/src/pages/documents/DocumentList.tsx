@@ -14,7 +14,12 @@ type DocumentRow = {
 	status: string;
 	providerId: { _id?: string; firstName?: string; lastName?: string } | string;
 	uploadedBy?: { _id?: string; fullName?: string; email?: string } | string;
+	clients?: string[];
+	clientSummary?: string | null;
+	insuranceServices?: string[];
+	insuranceServiceSummary?: string | null;
 	metadata?: {
+		clientName?: string;
 		insuranceService?: string;
 		onboardingData?: Record<string, any>;
 	};
@@ -138,6 +143,24 @@ export default function DocumentList() {
 		return getProviderDisplayName(doc.providerId);
 	};
 
+	const getClientColumnValue = (doc: DocumentRow) => {
+		if (doc.clientSummary) {
+			return doc.clientSummary;
+		}
+
+		const fallbackClient = String(doc.metadata?.clientName || '').trim();
+		return fallbackClient || 'N/A';
+	};
+
+	const getInsuranceServiceColumnValue = (doc: DocumentRow) => {
+		if (doc.insuranceServiceSummary) {
+			return doc.insuranceServiceSummary;
+		}
+
+		const fallbackInsurance = String(doc.metadata?.insuranceService || '').trim();
+		return fallbackInsurance || 'N/A';
+	};
+
 	const getSubmittedByDisplayName = (submittedBy: DocumentRow['uploadedBy']) => {
 		if (!submittedBy || typeof submittedBy !== 'object') {
 			return 'N/A';
@@ -159,6 +182,11 @@ export default function DocumentList() {
 			default:
 				return 'bg-blue-100 text-blue-700';
 		}
+	};
+
+	const formatStatusLabel = (status: string) => {
+		if (!status) return 'Unknown';
+		return status.replace(/_/g, ' ');
 	};
 
 	const getProgressBarClass = (value: number) => {
@@ -231,7 +259,7 @@ export default function DocumentList() {
 		return Math.max(0, Math.min(100, Math.round(((documentsRatio * 0.7) + (formRatio * 0.3)) * 100)));
 	};
 
-	const actionBtnClass = 'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md font-medium transition-colors';
+	const actionBtnClass = 'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md font-medium whitespace-nowrap transition-colors';
 
 	const confirmAction = async (note?: string) => {
 		if (!actionModal.documentId || !actionModal.type) return;
@@ -271,19 +299,20 @@ export default function DocumentList() {
 							: 'Your uploaded credentialing documents and review status.'}
 					</p>
 				</div>
-				<Link to="/documents/upload" className="self-start px-4 py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold shadow-sm hover:bg-primary-700 transition-colors">
+				<Link to="/documents/upload" className="w-full sm:w-auto text-center self-start px-4 py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold shadow-sm hover:bg-primary-700 transition-colors">
 					Upload Document
 				</Link>
 			</div>
 
-			<div className="flex flex-wrap gap-2 mt-4">
+			<div className="mt-4 -mx-1 px-1 overflow-x-auto">
+			<div className="flex w-max min-w-full gap-2">
 				{statusOptions.map((option) => {
 					const isActive = statusFilter === option.value;
 					return (
 						<button
 							key={option.label}
 							onClick={() => applyStatusFilter(option.value)}
-							className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+							className={`px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap transition-all ${
 								isActive
 									? 'bg-primary-600 text-white border-primary-600 shadow-sm shadow-primary-300/30'
 									: 'bg-white text-slate-700 border-slate-300 hover:border-primary-300 hover:text-primary-700'
@@ -295,53 +324,51 @@ export default function DocumentList() {
 				})}
 			</div>
 			</div>
+			</div>
 
 			{loading && <p className="text-sm text-gray-600">Loading documents...</p>}
 			{error && <p className="text-sm text-red-600">{error}</p>}
 
 			{!loading && !error && (
 				<>
-					<div className="md:hidden space-y-3">
+					<div className="lg:hidden space-y-3">
 						{documents.length === 0 ? (
 							<div className="bg-white border border-gray-200 rounded-lg p-4 text-sm text-gray-500">No documents found.</div>
 						) : documents.map((doc) => (
-							<div key={`mobile-${doc._id}`} className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+							<div key={`mobile-${doc._id}`} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-sm">
 								<div className="flex items-start justify-between gap-3">
 									<div className="min-w-0">
 										<p className="font-semibold text-gray-900 break-words">{doc.documentType}</p>
 										<p className="text-xs text-gray-500 mt-0.5">{new Date(doc.createdAt).toLocaleDateString()}</p>
 									</div>
 									<span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium shrink-0 ${statusBadgeClass(doc.status)}`}>
-										{doc.status}
+										{formatStatusLabel(doc.status)}
 									</span>
 								</div>
 
-								<div>
-									<p className="text-xs text-gray-500">File</p>
-									{doc.filesCount && doc.filesCount > 1 ? (
-										<div>
-											<p className="text-sm font-medium text-gray-800">{doc.filesCount} files submitted</p>
-											<p className="text-xs text-gray-500 break-all">{doc.fileName}</p>
-										</div>
-									) : (
-										<p className="text-sm text-gray-800 break-all">{doc.fileName}</p>
-									)}
-								</div>
-
-								<div className="grid grid-cols-1 gap-2 text-sm">
+								<div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
 									<p className="text-gray-700 break-words"><span className="text-gray-500">Provider:</span> {getProviderColumnValue(doc)}</p>
+									<p className="text-gray-700 break-words"><span className="text-gray-500">Client:</span> {getClientColumnValue(doc)}</p>
+									<p className="text-gray-700 break-words sm:col-span-2"><span className="text-gray-500">Insurance Service:</span> {getInsuranceServiceColumnValue(doc)}</p>
 									<div>
 										<p className="text-xs text-gray-500">Progress</p>
+										{(() => {
+											const progress = getSubmissionProgress(doc);
+											return (
+												<>
 										<div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-gray-200">
 											<div
-												className={`h-full rounded-full ${getProgressBarClass(getSubmissionProgress(doc))}`}
-												style={{ width: `${getSubmissionProgress(doc)}%` }}
+												className={`h-full rounded-full ${getProgressBarClass(progress)}`}
+												style={{ width: `${progress}%` }}
 											/>
 										</div>
-										<p className="text-xs text-gray-600 mt-1">{getSubmissionProgress(doc)}%</p>
+										<p className="text-xs text-gray-600 mt-1">{progress}%</p>
+											</>
+											);
+										})()}
 									</div>
 									{isAdmin && (
-										<p className="text-gray-700 break-words"><span className="text-gray-500">Submitted By:</span> {getSubmittedByDisplayName(doc.uploadedBy)}</p>
+										<p className="text-gray-700 break-words sm:col-span-2"><span className="text-gray-500">Submitted By:</span> {getSubmittedByDisplayName(doc.uploadedBy)}</p>
 									)}
 								</div>
 
@@ -382,14 +409,14 @@ export default function DocumentList() {
 						))}
 					</div>
 
-					<div className="hidden md:block bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+					<div className="hidden lg:block bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
 						<div className="overflow-x-auto">
 						<table className="min-w-[980px] w-full text-sm">
 						<thead className="bg-slate-50/90">
 							<tr>
-								<th className="px-4 py-3 text-left font-semibold text-slate-700">Document</th>
-								<th className="px-4 py-3 text-left font-semibold text-slate-700">File</th>
 								<th className="px-4 py-3 text-left font-semibold text-slate-700">Provider</th>
+								<th className="px-4 py-3 text-left font-semibold text-slate-700">Client</th>
+								<th className="px-4 py-3 text-left font-semibold text-slate-700">Insurance Service</th>
 								{isAdmin && <th className="px-4 py-3 text-left font-semibold text-slate-700">Submitted By</th>}
 								<th className="px-4 py-3 text-left font-semibold text-slate-700">Progress</th>
 								<th className="px-4 py-3 text-left font-semibold text-slate-700">Status</th>
@@ -402,33 +429,31 @@ export default function DocumentList() {
 								<tr><td className="px-4 py-4 text-slate-500" colSpan={isAdmin ? 8 : 7}>No documents found.</td></tr>
 							) : documents.map((doc) => (
 								<tr key={doc._id} className="border-t border-slate-100 hover:bg-slate-50/50 transition-colors">
-									<td className="px-4 py-3 text-slate-900 font-medium">{doc.documentType}</td>
-									<td className="px-4 py-3 text-slate-700">
-										{doc.filesCount && doc.filesCount > 1 ? (
-											<div>
-												<p className="font-semibold text-slate-800">{doc.filesCount} files submitted</p>
-												<p className="text-xs text-slate-500">{doc.fileName}</p>
-											</div>
-										) : (
-											doc.fileName
-										)}
-									</td>
-									<td className="px-4 py-3 text-slate-700">{getProviderColumnValue(doc)}</td>
+									<td className="px-4 py-3 text-slate-700 max-w-[190px] break-words">{getProviderColumnValue(doc)}</td>
+									<td className="px-4 py-3 text-slate-700 max-w-[180px] break-words">{getClientColumnValue(doc)}</td>
+									<td className="px-4 py-3 text-slate-700 max-w-[210px] break-words">{getInsuranceServiceColumnValue(doc)}</td>
 									{isAdmin && (
-										<td className="px-4 py-3 text-slate-700">
+										<td className="px-4 py-3 text-slate-700 max-w-[170px] break-words">
 											{getSubmittedByDisplayName(doc.uploadedBy)}
 										</td>
 									)}
-									<td className="px-4 py-3 text-slate-700 min-w-[140px]">
+									<td className="px-4 py-3 text-slate-700 min-w-[150px]">
+										{(() => {
+											const progress = getSubmissionProgress(doc);
+											return (
+												<>
 										<div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
 											<div
-												className={`h-full rounded-full ${getProgressBarClass(getSubmissionProgress(doc))}`}
-												style={{ width: `${getSubmissionProgress(doc)}%` }}
+												className={`h-full rounded-full ${getProgressBarClass(progress)}`}
+												style={{ width: `${progress}%` }}
 											/>
 										</div>
-										<p className="mt-1 text-xs text-slate-600">{getSubmissionProgress(doc)}%</p>
+										<p className="mt-1 text-xs text-slate-600">{progress}%</p>
+											</>
+											);
+										})()}
 									</td>
-									<td className="px-4 py-3"><span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${statusBadgeClass(doc.status)}`}>{doc.status}</span></td>
+									<td className="px-4 py-3"><span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${statusBadgeClass(doc.status)}`}>{formatStatusLabel(doc.status)}</span></td>
 									<td className="px-4 py-3 text-slate-700">{new Date(doc.createdAt).toLocaleDateString()}</td>
 									<td className="px-4 py-3">
 										<div className="flex flex-wrap lg:flex-nowrap gap-2">

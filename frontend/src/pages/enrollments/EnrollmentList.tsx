@@ -5,6 +5,7 @@ import { useAuthStore } from '../../store/authStore';
 import Modal from '../../components/common/Modal';
 import { providerService } from '../../services/providerService';
 import { authService } from '../../services/authService';
+import { notify } from '../../utils/notify';
 
 type EnrollmentRow = {
 	_id: string;
@@ -53,7 +54,6 @@ export default function EnrollmentList() {
 	const [userOptions, setUserOptions] = useState<UserOption[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [successMessage, setSuccessMessage] = useState<string | null>(null);
 	const [actionLoading, setActionLoading] = useState(false);
 	const [creatingEnrollment, setCreatingEnrollment] = useState(false);
 	const [deletingEnrollmentId, setDeletingEnrollmentId] = useState<string | null>(null);
@@ -116,7 +116,9 @@ export default function EnrollmentList() {
 			setEnrollments(data.items);
 			setError(null);
 		} catch (err: any) {
-			setError(err.response?.data?.message || 'Failed to load enrollments');
+			const message = err.response?.data?.message || 'Failed to load enrollments';
+			setError(message);
+			notify.errorOnce(message, 'enrollments-load-error');
 		} finally {
 			setLoading(false);
 		}
@@ -156,7 +158,9 @@ export default function EnrollmentList() {
 				setCreateForm((prev) => ({ ...prev, assignedTo: users[0]._id }));
 			}
 		} catch (err: any) {
-			setError(err.response?.data?.message || 'Failed to load enrollment form options');
+			const message = err.response?.data?.message || 'Failed to load enrollment form options';
+			setError(message);
+			notify.errorOnce(message, 'enrollments-load-options-error');
 		}
 	};
 
@@ -181,18 +185,18 @@ export default function EnrollmentList() {
 
 	const handleStatusUpdate = async (id: string, status: string, notes?: string) => {
 		try {
-			setSuccessMessage(null);
 			await enrollmentService.updateEnrollmentStatus(id, status, notes);
 			await loadEnrollments();
-			setSuccessMessage(`Enrollment marked as ${status}`);
+			notify.successOnce(`Enrollment marked as ${status}`, `enrollment-status-${id}-${status}`);
 		} catch (err: any) {
-			setError(err.response?.data?.message || 'Failed to update enrollment status');
+			const message = err.response?.data?.message || 'Failed to update enrollment status';
+			setError(message);
+			notify.errorOnce(message, `enrollment-status-error-${id}`);
 		}
 	};
 
 	const openCreateEnrollmentModal = () => {
 		setError(null);
-		setSuccessMessage(null);
 		setIsCreateModalOpen(true);
 	};
 
@@ -203,15 +207,18 @@ export default function EnrollmentList() {
 
 	const handleCreateEnrollment = async () => {
 		setError(null);
-		setSuccessMessage(null);
 
 		if (!createForm.providerId || !createForm.assignedTo) {
-			setError('Please select provider and assigned user');
+			const message = 'Please select provider and assigned user';
+			setError(message);
+			notify.warningOnce(message, 'enrollment-create-provider-user-required');
 			return;
 		}
 
 		if (selectedProviderInsurances.length === 0) {
-			setError('Please select at least one insurance service');
+			const message = 'Please select at least one insurance service';
+			setError(message);
+			notify.warningOnce(message, 'enrollment-create-insurance-required');
 			return;
 		}
 
@@ -229,12 +236,16 @@ export default function EnrollmentList() {
 
 		const missingField = requiredProviderFields.find(([, value]) => !String(value || '').trim());
 		if (missingField) {
-			setError(`Enrollment ${missingField[0]} is required`);
+			const message = `Enrollment ${missingField[0]} is required`;
+			setError(message);
+			notify.warningOnce(message, `enrollment-create-missing-${missingField[0]}`);
 			return;
 		}
 
 		if (!/^\d{10}$/.test(createForm.npi.trim())) {
-			setError('NPI must be exactly 10 digits');
+			const message = 'NPI must be exactly 10 digits';
+			setError(message);
+			notify.warningOnce(message, 'enrollment-create-invalid-npi');
 			return;
 		}
 
@@ -301,9 +312,11 @@ export default function EnrollmentList() {
 			setSelectedProviderInsurances([]);
 			setIsCreateModalOpen(false);
 			await loadEnrollments();
-			setSuccessMessage(`Enrollment created successfully with ${selectedProviderInsurances.length} insurance service(s)`);
+			notify.success(`Enrollment created successfully with ${selectedProviderInsurances.length} insurance service(s)`);
 		} catch (err: any) {
-			setError(err.response?.data?.message || 'Failed to create enrollment. Enrollment does not create provider records.');
+			const message = err.response?.data?.message || 'Failed to create enrollment. Enrollment does not create provider records.';
+			setError(message);
+			notify.error(message);
 		} finally {
 			setCreatingEnrollment(false);
 		}
@@ -311,7 +324,9 @@ export default function EnrollmentList() {
 
 	const handleDeleteEnrollment = async (enrollment: EnrollmentRow) => {
 		if (!isAdmin) {
-			setError('Only admin can delete enrollments');
+			const message = 'Only admin can delete enrollments';
+			setError(message);
+			notify.warningOnce(message, 'enrollment-delete-admin-only');
 			return;
 		}
 
@@ -325,14 +340,15 @@ export default function EnrollmentList() {
 
 		setDeletingEnrollmentId(enrollment._id);
 		setError(null);
-		setSuccessMessage(null);
 
 		try {
 			await enrollmentService.deleteEnrollment(enrollment._id);
 			setEnrollments((prev) => prev.filter((item) => item._id !== enrollment._id));
-			setSuccessMessage('Enrollment deleted successfully');
+			notify.successOnce('Enrollment deleted successfully', `enrollment-deleted-${enrollment._id}`);
 		} catch (err: any) {
-			setError(err.response?.data?.message || 'Failed to delete enrollment');
+			const message = err.response?.data?.message || 'Failed to delete enrollment';
+			setError(message);
+			notify.errorOnce(message, `enrollment-delete-error-${enrollment._id}`);
 		} finally {
 			setDeletingEnrollmentId(null);
 		}
@@ -408,6 +424,38 @@ export default function EnrollmentList() {
 		return 'bg-rose-400';
 	};
 
+	const formatStatusLabel = (status: string) => String(status || '').replace(/_/g, ' ') || 'unknown';
+
+	const getStatusBadgeClass = (status: string) => {
+		switch (status) {
+			case 'approved':
+				return 'bg-emerald-100 text-emerald-700';
+			case 'rejected':
+				return 'bg-rose-100 text-rose-700';
+			case 'submitted':
+				return 'bg-indigo-100 text-indigo-700';
+			case 'in_review':
+				return 'bg-amber-100 text-amber-700';
+			default:
+				return 'bg-blue-100 text-blue-700';
+		}
+	};
+
+	const getPriorityBadgeClass = (priority: string) => {
+		switch (priority) {
+			case 'urgent':
+				return 'bg-rose-100 text-rose-700';
+			case 'high':
+				return 'bg-amber-100 text-amber-700';
+			case 'medium':
+				return 'bg-blue-100 text-blue-700';
+			default:
+				return 'bg-slate-100 text-slate-700';
+		}
+	};
+
+	const actionBtnClass = 'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md font-medium whitespace-nowrap transition-colors';
+
 	const closeActionModal = () => {
 		if (actionLoading) return;
 		setActionModal({ open: false });
@@ -427,124 +475,192 @@ export default function EnrollmentList() {
 
 	return (
 		<div className="space-y-4">
-			<div className="flex items-start justify-between gap-3">
-				<div>
-					<h1 className="text-2xl font-bold text-gray-900">Enrollments</h1>
-					<p className="text-gray-600">Track enrollment statuses across providers and insurance services.</p>
-				</div>
-				{isAdmin && (
-					<button
-						type="button"
-						onClick={openCreateEnrollmentModal}
-						className="rounded-lg bg-primary-600 text-white px-4 py-2 text-sm font-medium hover:bg-primary-700"
-					>
-						Add Enrollment
-					</button>
-				)}
-			</div>
-
-			<div className="flex flex-wrap gap-2">
-				{statusOptions.map((option) => {
-					const isActive = statusFilter === option.value;
-					return (
+			<div className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur px-4 py-4 sm:px-5 sm:py-5 shadow-sm">
+				<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+					<div>
+						<h1 className="text-2xl font-bold tracking-tight text-slate-900">Enrollments</h1>
+						<p className="text-slate-600">Track enrollment statuses across providers and insurance services.</p>
+					</div>
+					{isAdmin && (
 						<button
-							key={option.label}
-							onClick={() => applyStatusFilter(option.value)}
-							className={`px-3 py-1.5 rounded-full text-xs font-medium border ${
-								isActive
-									? 'bg-primary-600 text-white border-primary-600'
-									: 'bg-white text-gray-700 border-gray-300 hover:border-primary-400'
-							}`}
+							type="button"
+							onClick={openCreateEnrollmentModal}
+							className="w-full sm:w-auto rounded-xl bg-primary-600 text-white px-4 py-2.5 text-sm font-semibold hover:bg-primary-700"
 						>
-							{option.label}
+							Add Enrollment
 						</button>
-					);
-				})}
+					)}
+				</div>
+
+				<div className="mt-4 -mx-1 px-1 overflow-x-auto">
+					<div className="flex w-max min-w-full gap-2">
+						{statusOptions.map((option) => {
+							const isActive = statusFilter === option.value;
+							return (
+								<button
+									key={option.label}
+									onClick={() => applyStatusFilter(option.value)}
+									className={`px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap transition-all ${
+										isActive
+											? 'bg-primary-600 text-white border-primary-600'
+											: 'bg-white text-slate-700 border-slate-300 hover:border-primary-400'
+									}`}
+								>
+									{option.label}
+								</button>
+							);
+						})}
+					</div>
+				</div>
 			</div>
 
-			{loading && <p className="text-sm text-gray-600">Loading enrollments...</p>}
-			{error && <p className="text-sm text-red-600">{error}</p>}
-			{successMessage && <p className="text-sm text-emerald-600">{successMessage}</p>}
+			{loading && <p className="text-sm text-slate-600">Loading enrollments...</p>}
+			{error && <p className="text-sm text-red-600 rounded-xl border border-red-200 bg-red-50 px-3 py-2">{error}</p>}
 
 			{!loading && !error && (
-				<div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-					<table className="min-w-full text-sm">
-						<thead className="bg-gray-50">
-							<tr>
-								<th className="px-4 py-3 text-left font-medium text-gray-700">Provider</th>
-								<th className="px-4 py-3 text-left font-medium text-gray-700">Client Name</th>
-								<th className="px-4 py-3 text-left font-medium text-gray-700">Insurance Service</th>
-								{isAdmin && <th className="px-4 py-3 text-left font-medium text-gray-700">Assigned User</th>}
-								<th className="px-4 py-3 text-left font-medium text-gray-700">Status</th>
-								<th className="px-4 py-3 text-left font-medium text-gray-700">Priority</th>
-								<th className="px-4 py-3 text-left font-medium text-gray-700">Progress</th>
-								{isAdmin && <th className="px-4 py-3 text-left font-medium text-gray-700">Actions</th>}
-							</tr>
-						</thead>
-						<tbody>
-							{enrollments.length === 0 ? (
-								<tr><td className="px-4 py-4 text-gray-500" colSpan={isAdmin ? 8 : 6}>No enrollments found.</td></tr>
-							) : enrollments.map((enrollment) => (
-								<tr key={enrollment._id} className="border-t border-gray-100">
-									<td className="px-4 py-3 text-gray-900">{getEnrollmentProviderLabel(enrollment)}</td>
-									<td className="px-4 py-3 text-gray-700">{getEnrollmentClientLabel(enrollment)}</td>
-									<td className="px-4 py-3 text-gray-700">{getEnrollmentInsuranceLabel(enrollment)}</td>
-									{isAdmin && (
-										<td className="px-4 py-3 text-gray-700">
-											<div className="leading-tight">
-												<p className="text-sm text-gray-900">{getAssignedUserDisplay(enrollment.assignedTo).name}</p>
-												{getAssignedUserDisplay(enrollment.assignedTo).email && (
-													<p className="text-xs text-gray-500">{getAssignedUserDisplay(enrollment.assignedTo).email}</p>
-												)}
-											</div>
-										</td>
-									)}
-									<td className="px-4 py-3"><span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{enrollment.status}</span></td>
-									<td className="px-4 py-3 text-gray-700">{enrollment.priority}</td>
-									<td className="px-4 py-3 text-gray-700">
-										<div className="w-28">
-											<div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
-												<div
-													className={`h-full rounded-full transition-all ${getProgressBarClass(Number(enrollment.progressPercentage || 0))}`}
-													style={{ width: `${Math.max(0, Math.min(100, Number(enrollment.progressPercentage || 0)))}%` }}
-												/>
-											</div>
-											<p className="mt-1 text-xs text-gray-600">{Math.round(Number(enrollment.progressPercentage || 0))}%</p>
+				<>
+					<div className="lg:hidden space-y-3">
+						{enrollments.length === 0 ? (
+							<div className="bg-white border border-slate-200 rounded-xl p-4 text-sm text-slate-500">No enrollments found.</div>
+						) : enrollments.map((enrollment) => {
+							const assigned = getAssignedUserDisplay(enrollment.assignedTo);
+							const progress = Math.max(0, Math.min(100, Number(enrollment.progressPercentage || 0)));
+
+							return (
+								<div key={`mobile-${enrollment._id}`} className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm">
+									<div className="flex items-start justify-between gap-3">
+										<div className="min-w-0">
+											<p className="font-semibold text-slate-900 break-words">{getEnrollmentProviderLabel(enrollment)}</p>
+											<p className="text-xs text-slate-500 mt-0.5 break-words">{getEnrollmentClientLabel(enrollment)}</p>
 										</div>
-									</td>
+										<span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getStatusBadgeClass(enrollment.status)}`}>
+											{formatStatusLabel(enrollment.status)}
+										</span>
+									</div>
+
+									<p className="text-sm text-slate-700 break-words"><span className="text-slate-500">Insurance:</span> {getEnrollmentInsuranceLabel(enrollment)}</p>
+
+									<div className="flex items-center gap-2">
+										<span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getPriorityBadgeClass(enrollment.priority)}`}>{enrollment.priority}</span>
+										{isAdmin && <span className="text-xs text-slate-500">Assigned: {assigned.name}</span>}
+									</div>
+
+									<div>
+										<p className="text-xs text-slate-500">Progress</p>
+										<div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+											<div className={`h-full rounded-full ${getProgressBarClass(progress)}`} style={{ width: `${progress}%` }} />
+										</div>
+										<p className="text-xs text-slate-600 mt-1">{Math.round(progress)}%</p>
+									</div>
+
 									{isAdmin && (
-										<td className="px-4 py-3">
-											<div className="flex flex-wrap gap-2">
-												{hasEnrollmentDocuments(enrollment) ? (
-													<>
-														{enrollment.status !== 'submitted' && (
-															<button onClick={() => openActionModal(enrollment._id, 'submitted')} className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-700">Submit</button>
-														)}
-														{enrollment.status !== 'approved' && (
-															<button onClick={() => openActionModal(enrollment._id, 'approved')} className="px-2 py-1 text-xs rounded bg-emerald-100 text-emerald-700">Approve</button>
-														)}
-														{enrollment.status !== 'rejected' && (
-															<button onClick={() => openActionModal(enrollment._id, 'rejected')} className="px-2 py-1 text-xs rounded bg-rose-100 text-rose-700">Reject</button>
-														)}
-													</>
-												) : (
-													<span className="px-2 py-1 text-xs rounded bg-amber-100 text-amber-700">Waiting for documents</span>
-												)}
-												<button
-													onClick={() => handleDeleteEnrollment(enrollment)}
-													disabled={deletingEnrollmentId === enrollment._id}
-													className="px-2 py-1 text-xs rounded bg-red-100 text-red-700 disabled:opacity-60"
-												>
-													{deletingEnrollmentId === enrollment._id ? 'Deleting...' : 'Delete'}
-												</button>
-											</div>
-										</td>
+										<div className="flex flex-wrap gap-2 pt-1">
+											{hasEnrollmentDocuments(enrollment) ? (
+												<>
+													{enrollment.status !== 'submitted' && (
+														<button onClick={() => openActionModal(enrollment._id, 'submitted')} className={`${actionBtnClass} bg-blue-100 text-blue-700`}>Submit</button>
+													)}
+													{enrollment.status !== 'approved' && (
+														<button onClick={() => openActionModal(enrollment._id, 'approved')} className={`${actionBtnClass} bg-emerald-100 text-emerald-700`}>Approve</button>
+													)}
+													{enrollment.status !== 'rejected' && (
+														<button onClick={() => openActionModal(enrollment._id, 'rejected')} className={`${actionBtnClass} bg-rose-100 text-rose-700`}>Reject</button>
+													)}
+												</>
+											) : (
+												<span className={`${actionBtnClass} bg-amber-100 text-amber-700`}>Waiting for documents</span>
+											)}
+											<button
+												onClick={() => handleDeleteEnrollment(enrollment)}
+												disabled={deletingEnrollmentId === enrollment._id}
+												className={`${actionBtnClass} bg-red-100 text-red-700 disabled:opacity-60`}
+											>
+												{deletingEnrollmentId === enrollment._id ? 'Deleting...' : 'Delete'}
+											</button>
+										</div>
 									)}
-								</tr>
-							))}
-						</tbody>
-					</table>
-				</div>
+								</div>
+							);
+						})}
+					</div>
+
+					<div className="hidden lg:block bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+						<div className="overflow-x-auto">
+							<table className="min-w-[1080px] w-full text-sm">
+								<thead className="bg-slate-50/90">
+									<tr>
+										<th className="px-4 py-3 text-left font-semibold text-slate-700">Provider</th>
+										<th className="px-4 py-3 text-left font-semibold text-slate-700">Client Name</th>
+										<th className="px-4 py-3 text-left font-semibold text-slate-700">Insurance Service</th>
+										{isAdmin && <th className="px-4 py-3 text-left font-semibold text-slate-700">Assigned User</th>}
+										<th className="px-4 py-3 text-left font-semibold text-slate-700">Status</th>
+										<th className="px-4 py-3 text-left font-semibold text-slate-700">Priority</th>
+										<th className="px-4 py-3 text-left font-semibold text-slate-700">Progress</th>
+										{isAdmin && <th className="px-4 py-3 text-left font-semibold text-slate-700">Actions</th>}
+									</tr>
+								</thead>
+								<tbody>
+									{enrollments.length === 0 ? (
+										<tr><td className="px-4 py-4 text-slate-500" colSpan={isAdmin ? 8 : 7}>No enrollments found.</td></tr>
+									) : enrollments.map((enrollment) => {
+										const assigned = getAssignedUserDisplay(enrollment.assignedTo);
+										const progress = Math.max(0, Math.min(100, Number(enrollment.progressPercentage || 0)));
+
+										return (
+											<tr key={enrollment._id} className="border-t border-slate-100 hover:bg-slate-50/40">
+												<td className="px-4 py-3 text-slate-900 max-w-[180px] break-words">{getEnrollmentProviderLabel(enrollment)}</td>
+												<td className="px-4 py-3 text-slate-700 max-w-[170px] break-words">{getEnrollmentClientLabel(enrollment)}</td>
+												<td className="px-4 py-3 text-slate-700 max-w-[220px] break-words">{getEnrollmentInsuranceLabel(enrollment)}</td>
+												{isAdmin && (
+													<td className="px-4 py-3 text-slate-700 max-w-[210px] break-words">
+														<p className="text-sm text-slate-900">{assigned.name}</p>
+														{assigned.email && <p className="text-xs text-slate-500">{assigned.email}</p>}
+													</td>
+												)}
+												<td className="px-4 py-3"><span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getStatusBadgeClass(enrollment.status)}`}>{formatStatusLabel(enrollment.status)}</span></td>
+												<td className="px-4 py-3"><span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getPriorityBadgeClass(enrollment.priority)}`}>{enrollment.priority}</span></td>
+												<td className="px-4 py-3 text-slate-700 min-w-[150px]">
+													<div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+														<div className={`h-full rounded-full ${getProgressBarClass(progress)}`} style={{ width: `${progress}%` }} />
+													</div>
+													<p className="mt-1 text-xs text-slate-600">{Math.round(progress)}%</p>
+												</td>
+												{isAdmin && (
+													<td className="px-4 py-3">
+														<div className="flex flex-wrap gap-2">
+															{hasEnrollmentDocuments(enrollment) ? (
+																<>
+																	{enrollment.status !== 'submitted' && (
+																		<button onClick={() => openActionModal(enrollment._id, 'submitted')} className={`${actionBtnClass} bg-blue-100 text-blue-700`}>Submit</button>
+																	)}
+																	{enrollment.status !== 'approved' && (
+																		<button onClick={() => openActionModal(enrollment._id, 'approved')} className={`${actionBtnClass} bg-emerald-100 text-emerald-700`}>Approve</button>
+																	)}
+																	{enrollment.status !== 'rejected' && (
+																		<button onClick={() => openActionModal(enrollment._id, 'rejected')} className={`${actionBtnClass} bg-rose-100 text-rose-700`}>Reject</button>
+																	)}
+																</>
+															) : (
+																<span className={`${actionBtnClass} bg-amber-100 text-amber-700`}>Waiting for documents</span>
+															)}
+															<button
+																onClick={() => handleDeleteEnrollment(enrollment)}
+																disabled={deletingEnrollmentId === enrollment._id}
+																className={`${actionBtnClass} bg-red-100 text-red-700 disabled:opacity-60`}
+															>
+																{deletingEnrollmentId === enrollment._id ? 'Deleting...' : 'Delete'}
+															</button>
+														</div>
+													</td>
+												)}
+											</tr>
+										);
+									})}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</>
 			)}
 
 			<Modal

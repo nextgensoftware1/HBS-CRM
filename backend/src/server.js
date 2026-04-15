@@ -1,12 +1,12 @@
 // backend/src/server.js
-const express = require('express');
+// const express = require('express');
 const mongoose = require('mongoose');
-const cors = require('cors');
+// const cors = require('cors');
 const path = require('path');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
-const rateLimit = require('express-rate-limit');
+// const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 // Import routes
@@ -67,8 +67,22 @@ const migrateEnrollmentIndexes = async () => {
     console.warn('⚠️ Enrollment index migration warning:', error.message);
   }
 };
-
+// Rate limiting
+const express = require('express');
+const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const app = express();
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: process.env.NODE_ENV === 'development' ? 5000 : 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many requests. Please try again shortly.',
+  },
+});
+app.use('/api', apiLimiter);
 // Avoid 304 responses for API XHR calls that can break client-side data loading flows.
 app.set('etag', false);
 
@@ -97,11 +111,14 @@ app.use(cors({
 }));
 
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
-});
-app.use('/api/', limiter);
+// const limiter = rateLimit({
+//   windowMs: 60 * 1000, // 15 minutes
+//   max: process.env.NODE_ENV === 'development' ? 10000 : 300,
+//   standardHeaders : true, // Return rate limit info in the `RateLimit-*` headers
+//   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  
+// });
+// app.use('/api', apiLimiter);
 
 // Body parser middleware
 app.use(express.json({ limit: '10mb' }));

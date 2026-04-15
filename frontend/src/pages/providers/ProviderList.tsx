@@ -761,8 +761,8 @@ export default function ProviderList() {
 			: provider.clientName || 'N/A';
 
 	return (
-		<div className="min-h-screen bg-gray-50/60">
-			<div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
+		<div className="space-y-6">
+			<div className="max-w-7xl mx-auto px-0 sm:px-1 lg:px-2 py-1 space-y-6">
 
 				{/* ── Page Header ── */}
 				<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

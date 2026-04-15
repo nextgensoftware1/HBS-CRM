@@ -4,6 +4,7 @@ import { providerService } from '../../services/providerService';
 import { documentService } from '../../services/documentService';
 import { enrollmentService } from '../../services/enrollmentService';
 import { useAuthStore } from '../../store/authStore';
+import { notify } from '../../utils/notify';
 
 type ProviderItem = {
   _id: string;
@@ -186,7 +187,6 @@ export default function DocumentUpload() {
   const [formData, setFormData] = useState<EnrollmentFormData>(initialFormData);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const hasAppliedPrefill = useRef(false);
 
   const getInsuranceKey = (clientId: string, insurance: string) => `${clientId}::${insurance}`;
@@ -224,7 +224,9 @@ export default function DocumentUpload() {
         return previousStillExists ? prev : items[0]._id;
       });
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load assigned enrollments');
+      const message = err.response?.data?.message || 'Failed to load assigned enrollments';
+      setError(message);
+      notify.errorOnce(message, 'document-upload-assigned-enrollments-load-error');
     } finally {
       setLoadingAssignedEnrollments(false);
     }
@@ -245,7 +247,9 @@ export default function DocumentUpload() {
         const data = await providerService.getProviders(1, 300);
         setProviders((data.items || []) as ProviderItem[]);
       } catch (err: any) {
-        setError(err.response?.data?.message || 'Failed to load providers');
+        const message = err.response?.data?.message || 'Failed to load providers';
+        setError(message);
+        notify.errorOnce(message, 'document-upload-providers-load-error');
       } finally {
         setLoadingProviders(false);
       }
@@ -421,15 +425,18 @@ export default function DocumentUpload() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSuccess(null);
 
     if (isAdmin) {
       if (!selectedIntakeOption || selectedInsuranceSelections.length === 0) {
-        setError('Please complete Step 1 and Step 2 first');
+        const message = 'Please complete Step 1 and Step 2 first';
+        setError(message);
+        notify.warningOnce(message, 'document-upload-step-1-2-required');
         return;
       }
     } else if (!selectedEnrollmentId) {
-      setError('Please select an assigned enrollment first');
+      const message = 'Please select an assigned enrollment first';
+      setError(message);
+      notify.warningOnce(message, 'document-upload-assigned-enrollment-required');
       return;
     }
 
@@ -437,7 +444,9 @@ export default function DocumentUpload() {
       .filter(([, file]) => Boolean(file)) as Array<[keyof EnrollmentFormData['documents'], File]>;
 
     if (filesToUpload.length === 0) {
-      setError('Please upload at least one required document file');
+      const message = 'Please upload at least one required document file';
+      setError(message);
+      notify.warningOnce(message, 'document-upload-file-required');
       return;
     }
 
@@ -513,7 +522,7 @@ export default function DocumentUpload() {
         });
       }
 
-      setSuccess(`${filesToUpload.length} document(s) uploaded successfully`);
+      notify.success(`${filesToUpload.length} document(s) uploaded successfully`);
       setFormData(initialFormData);
       setSelectedInsuranceKeys([]);
 
@@ -521,7 +530,9 @@ export default function DocumentUpload() {
         await loadAssignedEnrollments();
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to upload documents');
+      const message = err.response?.data?.message || 'Failed to upload documents';
+      setError(message);
+      notify.error(message);
     } finally {
       setSaving(false);
     }
@@ -535,7 +546,6 @@ export default function DocumentUpload() {
       </div>
 
       {error && <p className="text-sm text-red-700 rounded-xl border border-red-200 bg-red-50 px-3 py-2">{error}</p>}
-      {success && <p className="text-sm text-emerald-700 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">{success}</p>}
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {isAdmin && (

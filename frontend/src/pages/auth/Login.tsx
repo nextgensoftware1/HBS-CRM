@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../../services/authService';
 import { useAuthStore } from '../../store/authStore';
-import toast from 'react-hot-toast';
+import { notify } from '../../utils/notify';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -21,11 +21,11 @@ export default function Login() {
     try {
       const response = await authService.login(formData.email, formData.password);
       setAuth(response.data.user, response.data.token);
-      toast.success('Login successful!');
+      notify.success('Login successful!');
       const homePath = response.data.user.role === 'admin' ? '/dashboard' : '/workspace';
       navigate(homePath);
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Login failed');
+      notify.error(error.response?.data?.message || 'Login failed');
     } finally {
       setLoading(false);
     }

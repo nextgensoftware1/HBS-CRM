@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
 import { FiShield } from 'react-icons/fi';
 import { authService } from '../../services/authService';
 import { useAuthStore } from '../../store/authStore';
+import { notify } from '../../utils/notify';
 
 export default function AdminLogin() {
   const navigate = useNavigate();
@@ -33,15 +33,15 @@ export default function AdminLogin() {
       const loggedInUser = response.data.user;
 
       if (loggedInUser.role !== 'admin') {
-        toast.error('This account does not have admin access.');
+        notify.error('This account does not have admin access.');
         return;
       }
 
       setAuth(loggedInUser, response.data.token);
-      toast.success('Admin login successful!');
+      notify.success('Admin login successful!');
       navigate('/dashboard');
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Admin login failed');
+      notify.error(error.response?.data?.message || 'Admin login failed');
     } finally {
       setLoading(false);
     }

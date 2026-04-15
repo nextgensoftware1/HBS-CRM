@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../../services/authService';
 import { useAuthStore } from '../../store/authStore';
-import toast from 'react-hot-toast';
+import { notify } from '../../utils/notify';
 
 export default function Register() {
   const navigate = useNavigate();
@@ -20,7 +20,7 @@ export default function Register() {
     e.preventDefault();
 
     if (formData.password !== formData.confirmPassword) {
-      toast.error('Passwords do not match');
+      notify.error('Passwords do not match');
       return;
     }
 
@@ -33,10 +33,10 @@ export default function Register() {
         password: formData.password,
       });
       setAuth(response.data.user, response.data.token);
-      toast.success('Registration successful!');
+      notify.success('Registration successful!');
       navigate('/dashboard');
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Registration failed');
+      notify.error(error.response?.data?.message || 'Registration failed');
     } finally {
       setLoading(false);
     }

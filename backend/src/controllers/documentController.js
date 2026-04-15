@@ -2,6 +2,7 @@
 const Document = require('../models/Document');
 const Enrollment = require('../models/Enrollment');
 const Reminder = require('../models/Reminder');
+const Client = require('../models/Client');
 // const { uploadFile, deleteFile, getSignedUrl } = require('../services/s3Service');
 const googleDriveOAuthService = require('../services/googleDriveOAuthService');
 const { createNotification, notifyAdmins } = require('../services/notificationService');
@@ -254,6 +255,48 @@ const resolveGroupedStatus = (statuses = []) => {
   return 'pending';
 };
 
+const collectSubmissionClientAndInsurance = (document = {}, clientNameById = new Map()) => {
+  const metadata = document?.metadata || {};
+  const clients = [];
+  const insurances = [];
+  const selections = metadata?.onboardingData?.selectedInsuranceSelections;
+
+  if (Array.isArray(selections) && selections.length) {
+    for (const item of selections) {
+      const clientId = String(item?.clientId || '').trim();
+      const mappedClientName = clientId ? String(clientNameById.get(clientId) || '').trim() : '';
+      const clientName = String(item?.clientName || mappedClientName).trim();
+      const insurance = String(item?.insurance || '').trim();
+      if (clientName) clients.push(clientName);
+      if (insurance) insurances.push(insurance);
+    }
+  }
+
+  const fallbackClient = String(metadata?.clientName || '').trim();
+  const fallbackInsurance = String(metadata?.insuranceService || '').trim();
+  if (fallbackClient) clients.push(fallbackClient);
+  if (fallbackInsurance) insurances.push(fallbackInsurance);
+
+  const enrollmentProfileClientName = String(
+    document?.enrollmentId && typeof document.enrollmentId === 'object'
+      ? document.enrollmentId?.enrollmentProfile?.clientName || ''
+      : ''
+  ).trim();
+
+  if (enrollmentProfileClientName) {
+    clients.push(enrollmentProfileClientName);
+  }
+
+  return { clients, insurances };
+};
+
+const summarizeListValues = (items = [], maxVisible = 2) => {
+  if (!Array.isArray(items) || items.length === 0) return null;
+  if (items.length <= maxVisible) return items.join(', ');
+  const visible = items.slice(0, maxVisible).join(', ');
+  return `${visible} +${items.length - maxVisible} more`;
+};
+
 const getSubmissionQuery = (document) => {
   const metadata = document?.metadata || {};
   const onboardingData = metadata.onboardingData || {};
@@ -374,13 +417,43 @@ exports.getAllDocuments = async (req, res) => {
       .populate('verifiedBy', 'fullName')
       .sort({ createdAt: -1 });
 
+    const selectedClientIds = Array.from(new Set(
+      allDocuments.flatMap((doc) => {
+        const selections = doc?.metadata?.onboardingData?.selectedInsuranceSelections;
+        if (!Array.isArray(selections)) return [];
+
+        return selections
+          .map((item) => String(item?.clientId || '').trim())
+          .filter(Boolean);
+      })
+    ));
+
+    const clientNameById = new Map();
+    if (selectedClientIds.length) {
+      const clients = await Client.find({ _id: { $in: selectedClientIds } })
+        .select('practiceName')
+        .lean();
+
+      for (const client of clients) {
+        const id = String(client?._id || '').trim();
+        const name = String(client?.practiceName || '').trim();
+        if (id && name) {
+          clientNameById.set(id, name);
+        }
+      }
+    }
+
     const groupedMap = new Map();
     for (const doc of allDocuments) {
       const metadata = doc?.metadata || {};
       const hasOnboardingPayload = Boolean(metadata.onboardingData);
       const submissionId = buildSubmissionKey(doc);
+      const { clients, insurances } = collectSubmissionClientAndInsurance(doc, clientNameById);
 
       if (!groupedMap.has(submissionId)) {
+        const clientNameSet = new Set(clients);
+        const insuranceServiceSet = new Set(insurances);
+
         groupedMap.set(submissionId, {
           ...doc.toObject(),
           documentType: hasOnboardingPayload ? 'Insurance Intake Packet' : doc.documentType,
@@ -388,6 +461,8 @@ exports.getAllDocuments = async (req, res) => {
           fileNames: [doc.fileName],
           fileNameSet: new Set([doc.fileName]),
           statusList: [doc.status],
+          clientNameSet,
+          insuranceServiceSet,
           providerNameSet: new Set([
             typeof doc.providerId === 'object'
               ? `${doc.providerId.firstName || ''} ${doc.providerId.lastName || ''}`.trim()
@@ -404,6 +479,8 @@ exports.getAllDocuments = async (req, res) => {
         existing.filesCount = existing.fileNameSet.size;
         existing.fileNames = Array.from(existing.fileNameSet);
         existing.statusList.push(doc.status);
+        clients.forEach((name) => existing.clientNameSet.add(name));
+        insurances.forEach((insurance) => existing.insuranceServiceSet.add(insurance));
         if (typeof doc.providerId === 'object') {
           const providerLabel = `${doc.providerId.firstName || ''} ${doc.providerId.lastName || ''}`.trim();
           if (providerLabel) {
@@ -423,6 +500,8 @@ exports.getAllDocuments = async (req, res) => {
             fileNames: existing.fileNames,
             fileNameSet: existing.fileNameSet,
             statusList: existing.statusList,
+            clientNameSet: existing.clientNameSet,
+            insuranceServiceSet: existing.insuranceServiceSet,
             providerNameSet: existing.providerNameSet,
             metadata: {
               ...(doc.metadata || {}),
@@ -436,8 +515,14 @@ exports.getAllDocuments = async (req, res) => {
     const groupedDocuments = Array.from(groupedMap.values()).map((row) => ({
       ...row,
       status: resolveGroupedStatus(row.statusList || []),
+      clients: Array.from(row.clientNameSet || []),
+      clientSummary: summarizeListValues(Array.from(row.clientNameSet || [])),
+      insuranceServices: Array.from(row.insuranceServiceSet || []),
+      insuranceServiceSummary: summarizeListValues(Array.from(row.insuranceServiceSet || [])),
       statusList: undefined,
       fileNameSet: undefined,
+      clientNameSet: undefined,
+      insuranceServiceSet: undefined,
       providerSummary: row.providerNameSet?.size > 1
         ? `${row.providerNameSet.size} providers`
         : Array.from(row.providerNameSet || [])[0] || null,
@@ -609,6 +694,32 @@ exports.getDocumentSubmission = async (req, res) => {
       ).values()
     );
 
+    const selectedClientIds = Array.from(new Set(
+      docs.flatMap((doc) => {
+        const selections = doc?.metadata?.onboardingData?.selectedInsuranceSelections;
+        if (!Array.isArray(selections)) return [];
+
+        return selections
+          .map((item) => String(item?.clientId || '').trim())
+          .filter(Boolean);
+      })
+    ));
+
+    const clientNameById = new Map();
+    if (selectedClientIds.length) {
+      const clients = await Client.find({ _id: { $in: selectedClientIds } })
+        .select('practiceName')
+        .lean();
+
+      for (const client of clients) {
+        const id = String(client?._id || '').trim();
+        const name = String(client?.practiceName || '').trim();
+        if (id && name) {
+          clientNameById.set(id, name);
+        }
+      }
+    }
+
     const selectedInsuranceMap = new Map();
     for (const doc of docs) {
       const selections = doc?.metadata?.onboardingData?.selectedInsuranceSelections;
@@ -617,7 +728,8 @@ exports.getDocumentSubmission = async (req, res) => {
       for (const item of selections) {
         if (!item || typeof item !== 'object') continue;
         const clientId = String(item.clientId || '').trim();
-        const clientName = String(item.clientName || '').trim();
+        const mappedClientName = clientId ? String(clientNameById.get(clientId) || '').trim() : '';
+        const clientName = String(item.clientName || mappedClientName).trim();
         const insurance = String(item.insurance || '').trim();
         if (!clientId || !insurance) continue;
 

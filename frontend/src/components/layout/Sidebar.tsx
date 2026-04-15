@@ -10,7 +10,8 @@ import {
   FiBell,
   FiSettings,
   FiShield,
-  FiUpload
+  FiUpload,
+  FiX
 } from 'react-icons/fi';
 
 const navigation = [
@@ -46,7 +47,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role === 'admin';
   const userDisplayName = user?.fullName || 'User';
-  const userRoleLabel = user?.role?.replace('_', ' ') || 'member';
+  const userRoleLabel = user?.role?.replace(/_/g, ' ') || 'member';
 
   const primaryItems = isAdmin ? navigation : userNavigation;
   const secondaryItems = isAdmin ? adminNavigation : [];
@@ -60,8 +61,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         className={({ isActive }) =>
           `group flex items-center px-3 py-2.5 text-sm font-medium rounded-xl transition-all duration-150 border ${
             isActive
-              ? 'bg-primary-50 text-primary-700 border-primary-100 shadow-sm'
-              : 'text-gray-700 border-transparent hover:bg-gray-50 hover:text-gray-900'
+              ? 'bg-primary-50 text-primary-700 border-primary-100 shadow-sm shadow-primary-100/70'
+              : 'text-gray-700 border-transparent hover:bg-white/80 hover:text-gray-900 hover:border-slate-200'
           }`
         }
       >
@@ -81,12 +82,12 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-gradient-to-b from-white to-slate-50 border-r border-slate-200 flex flex-col transform transition-transform duration-200 ease-out lg:static lg:z-auto lg:w-[17rem] lg:max-w-none lg:translate-x-0 lg:shadow-[0_1px_0_rgba(255,255,255,.8)_inset] ${
+        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[88vw] bg-gradient-to-b from-white to-slate-50 border-r border-slate-200 flex flex-col overflow-hidden transform transition-transform duration-200 ease-out lg:static lg:z-auto lg:w-[17.5rem] lg:max-w-none lg:translate-x-0 lg:shadow-[0_1px_0_rgba(255,255,255,.8)_inset] ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Logo */}
-        <div className="h-16 flex items-center px-6 border-b border-slate-200/80">
+        <div className="h-16 flex items-center justify-between px-4 sm:px-6 border-b border-slate-200/80">
           <div className="flex items-center min-w-0">
             <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center shrink-0 shadow-sm shadow-primary-300/40">
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -95,10 +96,18 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             </div>
             <span className="ml-3 text-lg font-semibold text-slate-900 truncate tracking-tight">Healthcare CRM</span>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="lg:hidden inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100"
+            aria-label="Close menu"
+          >
+            <FiX className="h-5 w-5" />
+          </button>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-4 py-6 overflow-y-auto">
+        <nav className="flex-1 px-3 sm:px-4 py-4 sm:py-6 overflow-y-auto">
           <p className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-widest text-gray-400">Main Menu</p>
           <div className="space-y-1">
             {renderNavItems(primaryItems)}

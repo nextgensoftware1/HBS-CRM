@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -13,9 +15,22 @@
     @apply min-h-screen bg-slate-50 text-slate-800;
   }
 
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
     @apply antialiased;
-    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-family: Manrope, 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background-image: radial-gradient(circle at 0% 0%, #f8fafc 0%, #f1f5f9 42%, #e2e8f0 100%);
+    background-attachment: fixed;
+  }
+
+  input,
+  button,
+  textarea,
+  select {
+    font: inherit;
   }
 }
 

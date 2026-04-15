@@ -264,7 +264,7 @@ export default function ProviderDetail() {
   };
 
   return (
-    <div className="space-y-6">
+	<div className="space-y-6 max-w-7xl mx-auto">
       <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-white via-slate-50 to-white p-4 sm:p-5 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div className="min-w-0">
@@ -277,8 +277,18 @@ export default function ProviderDetail() {
                 {isEditing ? editForm.specialization : provider.specialization}
               </span>
             )}
+            {!isEditing && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                <span className="inline-flex rounded-full bg-slate-100 text-slate-700 px-2.5 py-1 text-xs font-semibold border border-slate-200">
+                  {provider.providerCategory || 'Individual'}
+                </span>
+                <span className="inline-flex rounded-full bg-indigo-100 text-indigo-700 px-2.5 py-1 text-xs font-semibold border border-indigo-200">
+                  {insuranceServiceNames.length} insurance {insuranceServiceNames.length === 1 ? 'service' : 'services'}
+                </span>
+              </div>
+            )}
           </div>
-          <div className="w-full sm:w-auto flex flex-wrap items-center gap-2 sm:justify-end">
+		  <div className="w-full sm:w-auto flex flex-wrap items-center gap-2 sm:justify-end">
             {canEdit && !isEditing && (
               <button
                 type="button"
@@ -286,7 +296,7 @@ export default function ProviderDetail() {
                   fillEditForm(provider, insuranceServiceNames);
                   setIsEditing(true);
                 }}
-                className="text-sm px-3 py-1.5 rounded-xl border border-slate-300 text-slate-700 bg-white shadow-sm hover:bg-slate-50"
+                className="w-full sm:w-auto text-sm px-3 py-2 rounded-xl border border-slate-300 text-slate-700 bg-white shadow-sm hover:bg-slate-50"
               >
                 Edit Provider
               </button>
@@ -296,7 +306,7 @@ export default function ProviderDetail() {
                 <button
                   type="button"
                   onClick={handleCancelEdit}
-                  className="text-sm px-3 py-1.5 rounded-xl border border-slate-300 text-slate-700 bg-white shadow-sm hover:bg-slate-50"
+                  className="w-full sm:w-auto text-sm px-3 py-2 rounded-xl border border-slate-300 text-slate-700 bg-white shadow-sm hover:bg-slate-50"
                 >
                   Cancel
                 </button>
@@ -304,13 +314,13 @@ export default function ProviderDetail() {
                   type="button"
                   onClick={handleSaveProvider}
                   disabled={saving}
-                  className="text-sm px-3 py-1.5 rounded-xl bg-primary-600 text-white shadow-sm shadow-primary-300/40 hover:bg-primary-700 disabled:opacity-60"
+                  className="w-full sm:w-auto text-sm px-3 py-2 rounded-xl bg-primary-600 text-white shadow-sm shadow-primary-300/40 hover:bg-primary-700 disabled:opacity-60"
                 >
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
               </>
             )}
-            <Link to="/providers" className="text-sm px-3 py-1.5 rounded-xl border border-primary-200 text-primary-700 bg-white shadow-sm hover:bg-primary-50">Back to list</Link>
+            <Link to="/providers" className="w-full sm:w-auto text-center text-sm px-3 py-2 rounded-xl border border-primary-200 text-primary-700 bg-white shadow-sm hover:bg-primary-50">Back to list</Link>
           </div>
         </div>
       </div>
@@ -318,8 +328,8 @@ export default function ProviderDetail() {
       {saveMessage && <p className="text-sm text-emerald-700 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">{saveMessage}</p>}
       {error && <p className="text-sm text-red-700 rounded-xl border border-red-200 bg-red-50 px-3 py-2">{error}</p>}
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-        <section className="xl:col-span-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-12 gap-5">
+      <section className="xl:col-span-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
             <FiHome className="h-4 w-4 text-slate-700" />
             <h2 className="font-semibold text-slate-900">Practice Profile</h2>
@@ -490,7 +500,7 @@ export default function ProviderDetail() {
           </div>
         </section>
 
-        <section className="xl:col-span-3 rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <section className="lg:col-span-2 xl:col-span-3 rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
             <FiShield className="h-4 w-4 text-slate-700" />
             <h2 className="font-semibold text-slate-900">Credential Logins</h2>
