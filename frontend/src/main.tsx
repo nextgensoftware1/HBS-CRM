@@ -27,7 +27,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       draggable
       theme="light"
       toastClassName="rounded-xl border border-slate-200 shadow-lg"
-      bodyClassName="text-sm text-slate-800"
     />
   </React.StrictMode>,
 )

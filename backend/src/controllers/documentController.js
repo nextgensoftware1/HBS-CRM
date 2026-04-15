@@ -300,7 +300,6 @@ const sanitizeSubmittedRequestSelections = (rawValue) => {
 
   return normalized;
 };
-
 const collectSubmissionClientAndInsurance = (document = {}, clientNameById = new Map()) => {
   const metadata = document?.metadata || {};
   const clients = [];
@@ -1616,7 +1615,6 @@ exports.updateSubmittedRequests = async (req, res) => {
     });
   }
 };
-
 // @desc    Delete document
 // @route   DELETE /api/documents/:id
 // @access  Private (Admin only)

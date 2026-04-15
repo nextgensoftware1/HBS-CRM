@@ -31,7 +31,6 @@ type DocumentRow = {
 
 type SubmittedRequestStatus = 'approved' | 'disapproved' | 'pending' | 'submitted';
 type SubmittedRequestSelectionStatus = 'approved' | 'disapproved' | 'pending';
-
 export default function DocumentList() {
 	const user = useAuthStore((state) => state.user);
 	const isAdmin = user?.role === 'admin';
@@ -373,19 +372,6 @@ export default function DocumentList() {
 		}
 	};
 
-	const getSubmittedRequestStatusLabel = (status: SubmittedRequestStatus) => {
-		switch (status) {
-			case 'approved':
-				return 'Approved';
-			case 'disapproved':
-				return 'Disapproved';
-			case 'submitted':
-				return 'Submitted';
-			default:
-				return 'Pending';
-		}
-	};
-
 	const getSubmittedRequestSelectionLabel = (status: SubmittedRequestSelectionStatus) => {
 		switch (status) {
 			case 'approved':
@@ -394,19 +380,6 @@ export default function DocumentList() {
 				return 'Disapproved';
 			default:
 				return 'Pending';
-		}
-	};
-
-	const getSubmittedRequestBadgeClass = (status: SubmittedRequestStatus) => {
-		switch (status) {
-			case 'approved':
-				return 'bg-emerald-100 text-emerald-700';
-			case 'disapproved':
-				return 'bg-rose-100 text-rose-700';
-			case 'submitted':
-				return 'bg-indigo-100 text-indigo-700';
-			default:
-				return 'bg-amber-100 text-amber-700';
 		}
 	};
 
@@ -503,7 +476,6 @@ export default function DocumentList() {
 			</div>
 		);
 	};
-
 	const getSubmittedByDisplayName = (submittedBy: DocumentRow['uploadedBy']) => {
 		if (!submittedBy || typeof submittedBy !== 'object') {
 			return 'N/A';

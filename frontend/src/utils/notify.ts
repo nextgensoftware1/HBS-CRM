@@ -13,7 +13,7 @@ const baseOptions: ToastOptions = {
 };
 
 const icon = (Component: React.ComponentType<{ className?: string }>) =>
-  React.createElement(Component, { className: 'h-4 w-4' });
+  () => React.createElement(Component, { className: 'h-4 w-4' });
 
 export const notify = {
   success(message: string, options?: ToastOptions) {
