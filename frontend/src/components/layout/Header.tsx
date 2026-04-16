@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { FiBell, FiUser, FiLogOut, FiSettings, FiMenu, FiSearch, FiX } from 'react-icons/fi';
 import { notificationService, type AppNotification } from '../../services/notificationService';
+import { reminderService } from '../../services/reminderService';
 
 type HeaderProps = {
   onMenuToggle: () => void;
@@ -90,6 +91,8 @@ export default function Header({ onMenuToggle }: HeaderProps) {
     const type = String(item.type || '').toLowerCase();
     const entityId = item.entityId || '';
 
+    const meta = item.metadata || {};
+
     if (entityType === 'document') {
       if (!entityId) return '/documents';
 
@@ -104,6 +107,21 @@ export default function Header({ onMenuToggle }: HeaderProps) {
       return '/enrollments';
     }
 
+    // If notification is about a reminder (missing document request), prefer opening the related submission
+    if (entityType === 'reminder') {
+      const submissionId = String(meta.submissionId || '').trim();
+      if (submissionId) {
+        return `/documents/${submissionId}/submission`;
+      }
+
+      // If reminder references an enrollment, try opening that enrollment's submission view
+      if (item.entityId) {
+        return `/reminders/${item.entityId}`;
+      }
+
+      return '/documents';
+    }
+
     return '/documents';
   };
 
@@ -114,7 +132,50 @@ export default function Header({ onMenuToggle }: HeaderProps) {
 
     setShowNotificationMenu(false);
     setShowUserMenu(false);
-    navigate(getNotificationTargetPath(item));
+
+    try {
+      // If this is a reminder notification but metadata lacks submissionId, fetch the reminder
+      // to attempt to find a submissionId to open the correct submission view.
+      const entityType = String(item.entityType || '').toLowerCase();
+      if (entityType === 'reminder') {
+        const metaSubmissionId = String(item.metadata?.submissionId || '').trim();
+        const lowered = (metaSubmissionId || '').toLowerCase();
+        const hasValidMetaSubmission = !!metaSubmissionId && lowered !== 'undefined' && lowered !== 'null';
+        if (hasValidMetaSubmission) {
+          navigate(`/documents/${metaSubmissionId}/submission`);
+          return;
+        }
+
+        // Try to fetch reminder details as a fallback to locate submissionId
+        if (item.entityId) {
+          try {
+            // Use the single-reminder endpoint which reliably returns populated metadata
+            const reminder = await reminderService.getReminder(item.entityId);
+            const fetchedSubmissionId = String(reminder?.metadata?.submissionId || '').trim();
+            const loweredFetched = (fetchedSubmissionId || '').toLowerCase();
+            const hasFetchedValid = !!fetchedSubmissionId && loweredFetched !== 'undefined' && loweredFetched !== 'null';
+            if (hasFetchedValid) {
+              navigate(`/documents/${fetchedSubmissionId}/submission`);
+              return;
+            }
+          } catch (e) {
+            // ignore and fall back
+          }
+        }
+
+        // fallback to reminder view
+        if (item.entityId) {
+          navigate(`/reminders/${item.entityId}`);
+          return;
+        }
+      }
+
+      // default handling
+      navigate(getNotificationTargetPath(item));
+    } catch (err) {
+      // fallback safe navigation
+      navigate(getNotificationTargetPath(item));
+    }
   };
 
   const markAllAsRead = async () => {

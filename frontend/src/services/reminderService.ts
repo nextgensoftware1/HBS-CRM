@@ -49,4 +49,8 @@ export const reminderService = {
     const response = await api.post('/reminders', payload);
     return response.data?.data?.reminder;
   },
+  async getReminder(id: string): Promise<any> {
+    const response = await api.get(`/reminders/${id}`);
+    return response.data?.data?.reminder;
+  },
 };

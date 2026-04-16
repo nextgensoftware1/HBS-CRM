@@ -110,7 +110,57 @@ exports.createReminder = async (req, res) => {
     });
     
     await reminder.populate('providerId enrollmentId assignedTo');
-    
+    // Send notifications and emails for missing document requests
+    try {
+      const { createNotification, notifyAdmins } = require('../services/notificationService');
+      const { sendMissingDocumentReminder } = require('../services/emailService');
+
+      // Notify the assigned user (if not the same as actor)
+      if (reminder.assignedTo && String(reminder.assignedTo._id || reminder.assignedTo) !== String(req.user._id)) {
+        await createNotification({
+          recipient: reminder.assignedTo._id || reminder.assignedTo,
+          actor: req.user._id,
+          type: 'document_status_changed',
+          title: reminder.title,
+          message: reminder.description || 'A reminder has been created',
+          entityType: 'reminder',
+          entityId: reminder._id,
+          metadata: reminder.metadata || {}
+        });
+      }
+
+      // Notify all admins (except actor)
+      await notifyAdmins({
+        actor: req.user._id,
+        type: 'document_status_changed',
+        title: reminder.title,
+        message: reminder.description || 'A reminder has been created',
+        entityType: 'reminder',
+        entityId: reminder._id,
+        metadata: reminder.metadata || {}
+      });
+
+      // If this is a missing document reminder, attempt to send an email to assigned user
+      if (String(reminder.reminderType) === 'missing_document' && reminder.assignedTo && reminder.assignedTo.email) {
+        try {
+          await sendMissingDocumentReminder({
+            toEmail: reminder.assignedTo.email,
+            providerName: `${reminder.providerId?.firstName || ''} ${reminder.providerId?.lastName || ''}`.trim(),
+            documentType: Array.isArray(reminder.metadata?.requestedDocuments) ? reminder.metadata.requestedDocuments.join(', ') : (reminder.metadata?.requestedDocuments || reminder.title),
+            clientName: reminder.providerId?.clientId?.practiceName || ''
+          });
+
+          reminder.emailSent = true;
+          reminder.emailSentAt = new Date();
+          await reminder.save();
+        } catch (emailErr) {
+          console.error('Failed to send missing document email on manual reminder creation:', emailErr.message || emailErr);
+        }
+      }
+    } catch (notifErr) {
+      console.error('Notification/email sending error for reminder:', notifErr.message || notifErr);
+    }
+
     res.status(201).json({
       status: 'success',
       message: 'Reminder created successfully',

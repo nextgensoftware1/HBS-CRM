@@ -3,6 +3,7 @@ const Document = require('../models/Document');
 const Enrollment = require('../models/Enrollment');
 const Reminder = require('../models/Reminder');
 const Client = require('../models/Client');
+const mongoose = require('mongoose');
 // const { uploadFile, deleteFile, getSignedUrl } = require('../services/s3Service');
 const googleDriveOAuthService = require('../services/googleDriveOAuthService');
 const { createNotification, notifyAdmins } = require('../services/notificationService');
@@ -647,15 +648,114 @@ exports.getDocument = async (req, res) => {
 // @access  Private
 exports.getDocumentSubmission = async (req, res) => {
   try {
-    const anchorDocument = await Document.findById(req.params.id)
-      .populate('providerId', 'firstName lastName npi')
-      .populate('uploadedBy', 'fullName email');
+    const paramId = String(req.params.id || '').trim();
+
+    // Try to resolve the anchor document by several strategies:
+    // 1) If paramId is a valid ObjectId, attempt findById
+    // 2) Fallback: find a document with matching metadata.submissionId
+    // 3) Fallback: find a document with matching metadata.onboardingData.batchSubmissionId
+    let anchorDocument = null;
+    console.debug('getDocumentSubmission: incoming param:', paramId);
+    if (mongoose.isValidObjectId(paramId)) {
+      anchorDocument = await Document.findById(paramId)
+        .populate('providerId', 'firstName lastName npi')
+        .populate('uploadedBy', 'fullName email');
+    }
 
     if (!anchorDocument) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Document submission not found'
-      });
+      // Try matching submissionId or onboarding batch id fields directly
+      console.debug('getDocumentSubmission: trying direct metadata match for param:', paramId);
+      anchorDocument = await Document.findOne({
+        $or: [
+          { 'metadata.submissionId': paramId },
+          { 'metadata.onboardingData.batchSubmissionId': paramId }
+        ]
+      })
+        .populate('providerId', 'firstName lastName npi')
+        .populate('uploadedBy', 'fullName email');
+    }
+
+    if (anchorDocument) console.debug('getDocumentSubmission: matched by direct or id, docId=', String(anchorDocument._id));
+
+    // If still not found, try decoded and fuzzy matches to handle URL-encoded pipes or minor variations
+    if (!anchorDocument) {
+      console.debug('getDocumentSubmission: trying decodeURIComponent fallback for param:', paramId);
+      try {
+        const decoded = decodeURIComponent(paramId);
+        if (decoded && decoded !== paramId) {
+          anchorDocument = await Document.findOne({
+            $or: [
+              { 'metadata.submissionId': decoded },
+              { 'metadata.onboardingData.batchSubmissionId': decoded }
+            ]
+          })
+            .populate('providerId', 'firstName lastName npi')
+            .populate('uploadedBy', 'fullName email');
+        }
+      } catch (e) {
+        console.debug('getDocumentSubmission: decodeURIComponent failed for param:', paramId, e && e.message);
+      }
+    }
+
+    if (anchorDocument) console.debug('getDocumentSubmission: matched after decode, docId=', String(anchorDocument._id));
+
+    if (!anchorDocument) {
+      console.debug('getDocumentSubmission: trying regex fuzzy match for param:', paramId);
+      // last-resort: regex fuzzy match on metadata.submissionId (case-insensitive)
+      try {
+        const escapeRegex = (s) => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(escapeRegex(paramId), 'i');
+        anchorDocument = await Document.findOne({ 'metadata.submissionId': { $regex: regex } })
+          .populate('providerId', 'firstName lastName npi')
+          .populate('uploadedBy', 'fullName email');
+      } catch (e) {
+        console.debug('getDocumentSubmission: regex match failed for param:', paramId, e && e.message);
+      }
+    }
+
+    if (anchorDocument) console.debug('getDocumentSubmission: matched by regex, docId=', String(anchorDocument._id));
+
+    if (!anchorDocument) {
+      console.debug('getDocumentSubmission: no direct/decoded/regex match — scanning recent documents for computed submission key');
+
+      try {
+        const since = new Date(Date.now() - (7 * 24 * 60 * 60 * 1000)); // last 7 days
+        const recentCandidates = await Document.find({ createdAt: { $gte: since } })
+          .select('metadata createdAt uploadedBy providerId')
+          .sort({ createdAt: -1 })
+          .limit(1000)
+          .lean();
+
+        console.debug('getDocumentSubmission: recentCandidates count=', recentCandidates.length);
+        let matched = null;
+        for (const cand of recentCandidates) {
+          try {
+            const key = buildSubmissionKey(cand);
+            if (String(key) === String(paramId)) {
+              matched = cand;
+              break;
+            }
+          } catch (e) {
+            // ignore per-candidate errors
+          }
+        }
+
+        if (matched) {
+          console.debug('getDocumentSubmission: matched by computed buildSubmissionKey, docId=', String(matched._id));
+          anchorDocument = await Document.findById(matched._id)
+            .populate('providerId', 'firstName lastName npi')
+            .populate('uploadedBy', 'fullName email');
+        }
+      } catch (e) {
+        console.debug('getDocumentSubmission: error scanning recent documents', e && e.message);
+      }
+
+      if (!anchorDocument) {
+        return res.status(404).json({
+          status: 'error',
+          message: 'Document submission not found'
+        });
+      }
     }
 
     const metadata = anchorDocument.metadata || {};
@@ -1178,7 +1278,8 @@ exports.uploadDocument = async (req, res) => {
         req.file.mimetype
       );
 
-      // Re-upload flow: replace existing rejected document in-place (no new DB row)
+      // Re-upload flow: create a new document record for the re-uploaded file
+      // so previous versions remain visible in submission history.
       if (replaceDocumentId) {
         const existingDocument = await Document.findById(replaceDocumentId);
         if (!existingDocument) {
@@ -1203,74 +1304,72 @@ exports.uploadDocument = async (req, res) => {
           });
         }
 
-        // Best-effort deletion of old storage object.
-        try {
-          if (existingDocument.fileKey) {
-            await googleDriveOAuthService.deleteFile(existingDocument.fileKey);
-          }
-        } catch (deleteErr) {
-          console.error('Old file deletion warning:', deleteErr);
-        }
+        // Do NOT delete the old storage file — preserve history. Mark previous versions as not latest.
+        await Document.updateMany(
+          {
+            providerId: existingDocument.providerId,
+            enrollmentId: existingDocument.enrollmentId,
+            documentType: existingDocument.documentType,
+            isLatestVersion: true,
+          },
+          { isLatestVersion: false }
+        );
 
-        existingDocument.fileName = req.file.originalname;
-        existingDocument.fileUrl = uploadResult.fileUrl;
-        existingDocument.fileKey = uploadResult.fileKey;
-        existingDocument.fileSize = req.file.size;
-        existingDocument.mimeType = req.file.mimetype;
-        existingDocument.version = (existingDocument.version || 1) + 1;
-        existingDocument.status = 'pending';
-        existingDocument.rejectionReason = null;
-        existingDocument.verifiedBy = null;
-        existingDocument.verifiedAt = null;
-        existingDocument.isLatestVersion = true;
-        existingDocument.issueDate = issueDate || existingDocument.issueDate || null;
-        existingDocument.expiryDate = expiryDate || existingDocument.expiryDate || null;
+        // Create a new document record representing the re-upload
+        const newVersionNumber = (existingDocument.version || 1) + 1;
+        const document = await Document.create({
+          providerId: existingDocument.providerId,
+          enrollmentId: existingDocument.enrollmentId || null,
+          documentType: existingDocument.documentType,
+          fileName: req.file.originalname,
+          fileUrl: uploadResult.fileUrl,
+          fileKey: uploadResult.fileKey,
+          fileSize: req.file.size,
+          mimeType: req.file.mimetype,
+          version: newVersionNumber,
+          issueDate: issueDate || existingDocument.issueDate || null,
+          expiryDate: expiryDate || existingDocument.expiryDate || null,
+          notes: notes || null,
+          metadata: {
+            ...(existingDocument.metadata || {}),
+            clientName: clientName || existingDocument.metadata?.clientName || null,
+            insuranceService: insuranceService || existingDocument.metadata?.insuranceService || null,
+            submissionId: submissionId || existingDocument.metadata?.submissionId || null,
+            onboardingData: parsedOnboardingData || existingDocument.metadata?.onboardingData || null,
+            previousDocumentId: existingDocument._id,
+          },
+          uploadedBy: req.user._id,
+          isLatestVersion: true,
+          status: 'pending',
+        });
 
-        if (notes) {
-          existingDocument.notes = existingDocument.notes
-            ? `${existingDocument.notes}\n${notes}`
-            : notes;
-        }
-
-        existingDocument.metadata = {
-          ...(existingDocument.metadata || {}),
-          clientName: clientName || existingDocument.metadata?.clientName || null,
-          insuranceService: insuranceService || existingDocument.metadata?.insuranceService || null,
-          submissionId: submissionId || existingDocument.metadata?.submissionId || null,
-          onboardingData: parsedOnboardingData || existingDocument.metadata?.onboardingData || null,
-        };
-
-        await existingDocument.save();
-
-        const existingEnrollment = existingDocument.enrollmentId
-          ? await Enrollment.findById(existingDocument.enrollmentId)
-          : null;
-        if (existingEnrollment) {
-          await existingEnrollment.addTimelineEvent({
+        const enrollment = existingDocument.enrollmentId ? await Enrollment.findById(existingDocument.enrollmentId) : null;
+        if (enrollment) {
+          await enrollment.addTimelineEvent({
             eventType: 'document_uploaded',
             eventDescription: `${existingDocument.documentType} re-uploaded after rejection`,
             performedBy: req.user._id,
             metadata: {
-              documentId: existingDocument._id,
-              documentType: existingDocument.documentType,
-              source: 'reupload_replace'
+              documentId: document._id,
+              documentType: document.documentType,
+              source: 'reupload_create'
             }
           });
 
-          await existingEnrollment.calculateProgress();
+          await enrollment.calculateProgress();
         }
 
-        await existingDocument.populate('providerId enrollmentId uploadedBy');
+        await document.populate('providerId enrollmentId uploadedBy');
 
         await notifyAdmins({
           actor: req.user._id,
           type: 'document_reuploaded',
           title: 'Document re-uploaded',
-          message: `${req.user.fullName} re-uploaded ${existingDocument.documentType} (${existingDocument.fileName}) for review.`,
-          entityId: existingDocument._id,
+          message: `${req.user.fullName} re-uploaded ${document.documentType} (${document.fileName}) for review.`,
+          entityId: document._id,
           metadata: {
-            documentType: existingDocument.documentType,
-            fileName: existingDocument.fileName,
+            documentType: document.documentType,
+            fileName: document.fileName,
             source: 'reupload',
           },
         });
@@ -1278,19 +1377,19 @@ exports.uploadDocument = async (req, res) => {
         if (isRequestedUpload) {
           await resolveMissingDocumentReminderAfterUpload({
             userId: req.user._id,
-            providerId: existingDocument.providerId,
-            enrollmentId: existingDocument.enrollmentId,
-            submissionId: submissionId || existingDocument.metadata?.submissionId,
+            providerId: document.providerId,
+            enrollmentId: document.enrollmentId,
+            submissionId: document.metadata?.submissionId || submissionId,
             requestedDocumentLabel,
-            documentType: existingDocument.documentType,
-            uploadedDocumentId: existingDocument._id,
+            documentType: document.documentType,
+            uploadedDocumentId: document._id,
           });
         }
 
-        return res.status(200).json({
+        return res.status(201).json({
           status: 'success',
           message: 'Document re-uploaded successfully',
-          data: { document: existingDocument }
+          data: { document }
         });
       }
       

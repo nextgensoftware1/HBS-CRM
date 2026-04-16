@@ -27,11 +27,15 @@ const calculateProgressFromDocuments = (documents = []) => {
     return 0;
   }
 
-  const uniqueDocumentKeys = new Set(
-    documents.map((doc) => `${String(doc.documentType || '').trim()}::${String(doc.fileName || '').trim()}`)
+  // Count distinct approved document types only. Documents contribute 70%.
+  const approvedDocumentTypes = new Set(
+    documents
+      .filter((doc) => String(doc.status || '').toLowerCase() === 'approved')
+      .map((doc) => String(doc.documentType || '').trim())
+      .filter(Boolean)
   );
 
-  const documentsRatio = Math.min(uniqueDocumentKeys.size / REQUIRED_DOCUMENT_SLOTS, 1);
+  const documentsRatio = Math.min(approvedDocumentTypes.size / REQUIRED_DOCUMENT_SLOTS, 1);
   const latestOnboardingPayloadDoc = documents.find((doc) => doc?.metadata?.onboardingData);
   const onboardingData = latestOnboardingPayloadDoc?.metadata?.onboardingData || {};
 
