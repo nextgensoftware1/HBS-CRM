@@ -72,91 +72,97 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="card p-6">
         <div className="flex items-center gap-3 mb-2">
-          <FiShield className="h-6 w-6 text-slate-700" />
-          <h1 className="text-2xl font-bold text-slate-900">Admin Console</h1>
+          <div className="p-2 rounded-md bg-[var(--color-secondary-soft)]">
+            <FiShield className="h-6 w-6 text-[var(--color-secondary)]" />
+          </div>
+          <h1 className="text-2xl font-bold text-[var(--color-text-dark)]">Admin Console</h1>
         </div>
-        <p className="text-slate-600">
+        <p className="text-sm text-[var(--color-text-light)]">
           Welcome {user?.fullName}. This area is restricted to administrator accounts.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {cards.map((card) => (
-          <div key={card.title} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <card.icon className="h-5 w-5 text-primary-600 mb-3" />
-            <h2 className="text-lg font-semibold text-gray-900">{card.title}</h2>
-            <p className="text-sm text-gray-600 mt-2">{card.description}</p>
+          <div key={card.title} className="rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-background)] p-5 shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)] transition-shadow">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 rounded-md bg-[var(--color-light-section)]">
+                <card.icon className="h-5 w-5 text-[var(--color-secondary)]" />
+              </div>
+              <h2 className="text-lg font-semibold text-[var(--color-text-dark)]">{card.title}</h2>
+            </div>
+            <p className="text-sm text-[var(--color-text-light)] mt-1">{card.description}</p>
           </div>
         ))}
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Operational Queues</h2>
-        <p className="text-sm text-gray-600 mb-4">
+      <div className="card p-5">
+        <h2 className="text-lg font-semibold text-[var(--color-text-dark)] mb-3">Operational Queues</h2>
+        <p className="text-sm text-[var(--color-text-light)] mb-4">
           Quickly review pending and approved work across enrollments, documents, and reminders.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          <Link to="/enrollments?status=in_review" className="rounded-lg border border-gray-200 px-4 py-3 hover:border-primary-500 hover:bg-primary-50 transition-colors">
+          <Link to="/enrollments?status=in_review" className="rounded-lg border border-[var(--color-border-soft)] px-4 py-3 hover:border-[var(--color-secondary)] hover:bg-[var(--color-secondary-soft)] transition-colors">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-gray-900">Pending Enrollments</p>
+                <p className="text-sm font-semibold text-[var(--color-text-dark)]">Pending Enrollments</p>
               <span className="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
                 {queueCounts.pendingEnrollments}
               </span>
             </div>
-            <p className="text-xs text-gray-600 mt-1">Review enrollments in progress</p>
+              <p className="text-xs text-[var(--color-text-light)] mt-1">Review enrollments in progress</p>
           </Link>
 
-          <Link to="/enrollments?status=approved" className="rounded-lg border border-gray-200 px-4 py-3 hover:border-primary-500 hover:bg-primary-50 transition-colors">
+          <Link to="/enrollments?status=approved" className="rounded-lg border border-[var(--color-border-soft)] px-4 py-3 hover:border-[var(--color-secondary)] hover:bg-[var(--color-secondary-soft)] transition-colors">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-gray-900">Approved Enrollments</p>
+                <p className="text-sm font-semibold text-[var(--color-text-dark)]">Approved Enrollments</p>
               <span className="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
                 {queueCounts.approvedEnrollments}
               </span>
             </div>
-            <p className="text-xs text-gray-600 mt-1">View successfully approved enrollments</p>
+              <p className="text-xs text-[var(--color-text-light)] mt-1">View successfully approved enrollments</p>
           </Link>
 
-          <Link to="/documents?status=pending" className="rounded-lg border border-gray-200 px-4 py-3 hover:border-primary-500 hover:bg-primary-50 transition-colors">
+          <Link to="/documents?status=pending" className="rounded-lg border border-[var(--color-border-soft)] px-4 py-3 hover:border-[var(--color-secondary)] hover:bg-[var(--color-secondary-soft)] transition-colors">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-gray-900">Pending Documents</p>
+                <p className="text-sm font-semibold text-[var(--color-text-dark)]">Pending Documents</p>
               <span className="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold">
                 {queueCounts.pendingDocuments}
               </span>
             </div>
-            <p className="text-xs text-gray-600 mt-1">Check documents waiting for review</p>
+              <p className="text-xs text-[var(--color-text-light)] mt-1">Check documents waiting for review</p>
           </Link>
 
-          <Link to="/documents?status=approved" className="rounded-lg border border-gray-200 px-4 py-3 hover:border-primary-500 hover:bg-primary-50 transition-colors">
+          <Link to="/documents?status=approved" className="rounded-lg border border-[var(--color-border-soft)] px-4 py-3 hover:border-[var(--color-secondary)] hover:bg-[var(--color-secondary-soft)] transition-colors">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-gray-900">Approved Documents</p>
+                <p className="text-sm font-semibold text-[var(--color-text-dark)]">Approved Documents</p>
               <span className="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
                 {queueCounts.approvedDocuments}
               </span>
             </div>
-            <p className="text-xs text-gray-600 mt-1">Track already approved documents</p>
+              <p className="text-xs text-[var(--color-text-light)] mt-1">Track already approved documents</p>
           </Link>
 
-          <Link to="/reminders?status=pending" className="rounded-lg border border-gray-200 px-4 py-3 hover:border-primary-500 hover:bg-primary-50 transition-colors">
+          <Link to="/reminders?status=pending" className="rounded-lg border border-[var(--color-border-soft)] px-4 py-3 hover:border-[var(--color-secondary)] hover:bg-[var(--color-secondary-soft)] transition-colors">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-gray-900">Pending Reminders</p>
-              <span className="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-full bg-orange-100 text-orange-700 text-xs font-semibold">
+                <p className="text-sm font-semibold text-[var(--color-text-dark)]">Pending Reminders</p>
+              <span className="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold">
                 {queueCounts.pendingReminders}
               </span>
             </div>
-            <p className="text-xs text-gray-600 mt-1">Follow up on open reminders</p>
+              <p className="text-xs text-[var(--color-text-light)] mt-1">Follow up on open reminders</p>
           </Link>
 
-          <Link to="/reminders?status=completed" className="rounded-lg border border-gray-200 px-4 py-3 hover:border-primary-500 hover:bg-primary-50 transition-colors">
+          <Link to="/reminders?status=completed" className="rounded-lg border border-[var(--color-border-soft)] px-4 py-3 hover:border-[var(--color-secondary)] hover:bg-[var(--color-secondary-soft)] transition-colors">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-gray-900">Completed Reminders</p>
+                <p className="text-sm font-semibold text-[var(--color-text-dark)]">Completed Reminders</p>
               <span className="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
                 {queueCounts.completedReminders}
               </span>
             </div>
-            <p className="text-xs text-gray-600 mt-1">Audit finished reminder actions</p>
+              <p className="text-xs text-[var(--color-text-light)] mt-1">Audit finished reminder actions</p>
           </Link>
         </div>
       </div>

@@ -155,9 +155,9 @@ export default function ReminderList() {
 
 	return (
 		<div className="space-y-4">
-			<div className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur px-4 py-4 sm:px-5 sm:py-5 shadow-sm">
-				<h1 className="text-2xl font-bold tracking-tight text-slate-900">Reminders</h1>
-				<p className="text-slate-600">Tasks and follow-ups requiring action.</p>
+			<div className="rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-background)]/90 backdrop-blur px-4 py-4 sm:px-5 sm:py-5 shadow-[var(--shadow-md)]">
+				<h1 className="text-2xl font-bold tracking-tight text-[var(--color-text-dark)]">Reminders</h1>
+				<p className="text-[var(--color-text-light)]">Tasks and follow-ups requiring action.</p>
 
 				<div className="mt-4 -mx-1 px-1 overflow-x-auto">
 					<div className="flex w-max min-w-full gap-2">
@@ -169,8 +169,8 @@ export default function ReminderList() {
 									onClick={() => applyStatusFilter(option.value)}
 									className={`px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap transition-all ${
 										isActive
-											? 'bg-primary-600 text-white border-primary-600'
-											: 'bg-white text-slate-700 border-slate-300 hover:border-primary-400'
+											? 'bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-secondary)] text-white border-[var(--color-secondary)] shadow-[var(--shadow-md)]'
+											: 'bg-[var(--color-background)] text-[var(--color-text-dark)] border-[var(--color-border-soft)] hover:border-[var(--color-secondary)]/60'
 									}`}
 								>
 									{option.label}
@@ -187,10 +187,10 @@ export default function ReminderList() {
 			{!loading && !error && (
 				<>
 					<div className="lg:hidden space-y-3">
-						{reminders.length === 0 ? (
-							<div className="bg-white border border-slate-200 rounded-xl p-4 text-sm text-slate-500">No reminders found.</div>
-						) : reminders.map((reminder) => (
-							<div key={`mobile-${reminder._id}`} className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm">
+							{reminders.length === 0 ? (
+								<div className="bg-[var(--color-background)] border border-[var(--color-border-soft)] rounded-xl p-4 text-sm text-[var(--color-text-light)]">No reminders found.</div>
+							) : reminders.map((reminder) => (
+								<div key={`mobile-${reminder._id}`} className="bg-[var(--color-background)] border border-[var(--color-border-soft)] rounded-xl p-4 space-y-3 shadow-[var(--shadow-sm)]">
 								<div className="flex items-start justify-between gap-3">
 									<p className="font-semibold text-slate-900 break-words">{reminder.title}</p>
 									<span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getStatusBadgeClass(reminder.status)}`}>
@@ -198,20 +198,20 @@ export default function ReminderList() {
 									</span>
 								</div>
 
-								<p className="text-sm text-slate-700 break-words">{reminder.description || 'N/A'}</p>
+									<p className="text-sm text-[var(--color-text-dark)] break-words">{reminder.description || 'N/A'}</p>
 								{Array.isArray(reminder.metadata?.requestedDocuments) && reminder.metadata.requestedDocuments.length > 0 && (
 									<p className="text-xs text-amber-700 break-words">Requested: {reminder.metadata.requestedDocuments.join(', ')}</p>
 								)}
 
-								<div className="flex flex-wrap gap-2">
-									<span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">{formatTypeLabel(reminder.reminderType)}</span>
-									<span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getPriorityBadgeClass(reminder.priority)}`}>{reminder.priority}</span>
-									<span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">Due {new Date(reminder.dueDate).toLocaleDateString()}</span>
-								</div>
+									<div className="flex flex-wrap gap-2">
+										<span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-[var(--color-background)] text-[var(--color-text-dark)]">{formatTypeLabel(reminder.reminderType)}</span>
+										<span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getPriorityBadgeClass(reminder.priority)}`}>{reminder.priority}</span>
+										<span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-[var(--color-background)] text-[var(--color-text-dark)]">Due {new Date(reminder.dueDate).toLocaleDateString()}</span>
+									</div>
 
 								<div className="flex flex-wrap gap-2 pt-1">
 									{!isAdmin && reminder.reminderType === 'missing_document' && reminder.status !== 'completed' && (
-										<button onClick={() => openUploadForReminder(reminder)} className={`${actionBtnClass} bg-primary-100 text-primary-700`}>Upload Requested Docs</button>
+										<button onClick={() => openUploadForReminder(reminder)} className={`${actionBtnClass} bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-secondary)] text-white`}>Upload Requested Docs</button>
 									)}
 									{isAdmin && reminder.status !== 'completed' && (
 										<button onClick={() => openActionModal('complete', reminder._id)} className={`${actionBtnClass} bg-emerald-100 text-emerald-700`}>Complete</button>
@@ -225,19 +225,19 @@ export default function ReminderList() {
 						))}
 					</div>
 
-					<div className="hidden lg:block bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+									<div className="hidden lg:block bg-[var(--color-background)] border border-[var(--color-border-soft)] rounded-2xl shadow-[var(--shadow-md)] overflow-hidden">
 						<div className="overflow-x-auto">
 							<table className="min-w-[1080px] w-full text-sm">
-								<thead className="bg-slate-50/90">
-									<tr>
-										<th className="px-4 py-3 text-left font-semibold text-slate-700">Title</th>
-										<th className="px-4 py-3 text-left font-semibold text-slate-700">Message</th>
-										<th className="px-4 py-3 text-left font-semibold text-slate-700">Type</th>
-										<th className="px-4 py-3 text-left font-semibold text-slate-700">Due Date</th>
-										<th className="px-4 py-3 text-left font-semibold text-slate-700">Priority</th>
-										<th className="px-4 py-3 text-left font-semibold text-slate-700">Status</th>
-										<th className="px-4 py-3 text-left font-semibold text-slate-700">Actions</th>
-									</tr>
+										<thead className="bg-[var(--color-light-section)]/90">
+											<tr>
+												<th className="px-4 py-3 text-left font-semibold text-[var(--color-text-dark)]/85">Title</th>
+												<th className="px-4 py-3 text-left font-semibold text-[var(--color-text-dark)]/85">Message</th>
+												<th className="px-4 py-3 text-left font-semibold text-[var(--color-text-dark)]/85">Type</th>
+												<th className="px-4 py-3 text-left font-semibold text-[var(--color-text-dark)]/85">Due Date</th>
+												<th className="px-4 py-3 text-left font-semibold text-[var(--color-text-dark)]/85">Priority</th>
+												<th className="px-4 py-3 text-left font-semibold text-[var(--color-text-dark)]/85">Status</th>
+												<th className="px-4 py-3 text-left font-semibold text-[var(--color-text-dark)]/85">Actions</th>
+											</tr>
 								</thead>
 								<tbody>
 									{reminders.length === 0 ? (

@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+﻿import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { providerService } from '../../services/providerService';
 import api from '../../services/api';
 import type { Provider, Client } from '../../types/types';
 import { useAuthStore } from '../../store/authStore';
-import { FiShield, FiFileText, FiUser, FiHome, FiPhone, FiMail, FiCreditCard } from 'react-icons/fi';
+import { FiShield, FiFileText, FiUser, FiHome, FiPhone, FiMail, FiCreditCard, FiEye, FiEyeOff } from 'react-icons/fi';
 
 type EnrollmentRow = {
   _id: string;
@@ -244,14 +244,14 @@ export default function ProviderDetail() {
   };
 
   if (loading) {
-    return <p className="text-sm text-slate-600">Loading provider profile...</p>;
+    return <p className="text-sm text-[var(--color-text-dark)]/70">Loading provider profile...</p>;
   }
 
   if (error || !provider) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-red-600">{error || 'Provider not found'}</p>
-        <Link to="/providers" className="text-sm text-primary-600">Back to providers</Link>
+        <p className="text-sm text-rose-600">{error || 'Provider not found'}</p>
+        <Link to="/providers" className="text-sm text-[var(--color-secondary)]">Back to providers</Link>
       </div>
     );
   }
@@ -265,24 +265,24 @@ export default function ProviderDetail() {
 
   return (
 	<div className="space-y-6 max-w-7xl mx-auto">
-      <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-white via-slate-50 to-white p-4 sm:p-5 shadow-sm">
+  <div className="rounded-2xl border border-[var(--color-border-soft)] bg-gradient-to-r from-[var(--color-background)] via-[var(--color-light-section)] to-[var(--color-secondary-soft)] p-4 sm:p-5 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 break-words leading-tight">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--color-text-dark)] break-words leading-tight">
               {isEditing ? `${editForm.firstName} ${editForm.lastName}`.trim() || 'Provider' : `${provider.firstName} ${provider.lastName}`}
             </h1>
-            <p className="text-sm text-slate-600 mt-1">Provider profile synced from backend records.</p>
+            <p className="text-sm text-[var(--color-text-dark)]/70 mt-1">Provider profile synced from backend records.</p>
             {hasValue(isEditing ? editForm.specialization : provider.specialization) && (
-              <span className="inline-flex mt-3 rounded-full bg-blue-100 text-blue-700 px-2.5 py-1 text-xs font-semibold border border-blue-200">
+              <span className="inline-flex mt-3 rounded-full bg-[var(--color-secondary-soft)] text-[var(--color-secondary)] px-2.5 py-1 text-xs font-semibold border border-[var(--color-border-soft)]">
                 {isEditing ? editForm.specialization : provider.specialization}
               </span>
             )}
             {!isEditing && (
               <div className="mt-2 flex flex-wrap gap-2">
-                <span className="inline-flex rounded-full bg-slate-100 text-slate-700 px-2.5 py-1 text-xs font-semibold border border-slate-200">
+                <span className="inline-flex rounded-full bg-[var(--color-light-section)] text-[var(--color-text-dark)]/85 px-2.5 py-1 text-xs font-semibold border border-[var(--color-border-soft)]">
                   {provider.providerCategory || 'Individual'}
                 </span>
-                <span className="inline-flex rounded-full bg-indigo-100 text-indigo-700 px-2.5 py-1 text-xs font-semibold border border-indigo-200">
+                <span className="inline-flex rounded-full bg-[rgba(106,193,67,0.12)] text-[var(--color-primary)] px-2.5 py-1 text-xs font-semibold border border-[rgba(106,193,67,0.3)]">
                   {insuranceServiceNames.length} insurance {insuranceServiceNames.length === 1 ? 'service' : 'services'}
                 </span>
               </div>
@@ -296,7 +296,7 @@ export default function ProviderDetail() {
                   fillEditForm(provider, insuranceServiceNames);
                   setIsEditing(true);
                 }}
-                className="w-full sm:w-auto text-sm px-3 py-2 rounded-xl border border-slate-300 text-slate-700 bg-white shadow-sm hover:bg-slate-50"
+                className="btn btn-primary w-full sm:w-auto"
               >
                 Edit Provider
               </button>
@@ -306,7 +306,7 @@ export default function ProviderDetail() {
                 <button
                   type="button"
                   onClick={handleCancelEdit}
-                  className="w-full sm:w-auto text-sm px-3 py-2 rounded-xl border border-slate-300 text-slate-700 bg-white shadow-sm hover:bg-slate-50"
+                  className="btn w-full sm:w-auto"
                 >
                   Cancel
                 </button>
@@ -314,25 +314,25 @@ export default function ProviderDetail() {
                   type="button"
                   onClick={handleSaveProvider}
                   disabled={saving}
-                  className="w-full sm:w-auto text-sm px-3 py-2 rounded-xl bg-primary-600 text-white shadow-sm shadow-primary-300/40 hover:bg-primary-700 disabled:opacity-60"
+                  className="btn btn-primary w-full sm:w-auto disabled:opacity-60"
                 >
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
               </>
             )}
-            <Link to="/providers" className="w-full sm:w-auto text-center text-sm px-3 py-2 rounded-xl border border-primary-200 text-primary-700 bg-white shadow-sm hover:bg-primary-50">Back to list</Link>
+            <Link to="/providers" className="btn w-full sm:w-auto text-center inline-flex items-center justify-center">Back to list</Link>
           </div>
         </div>
       </div>
 
       {saveMessage && <p className="text-sm text-emerald-700 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">{saveMessage}</p>}
-      {error && <p className="text-sm text-red-700 rounded-xl border border-red-200 bg-red-50 px-3 py-2">{error}</p>}
+      {error && <p className="text-sm text-rose-700 rounded-xl border border-[rgba(239,68,68,0.28)] bg-[rgba(239,68,68,0.1)] px-3 py-2">{error}</p>}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-12 gap-5">
-      <section className="xl:col-span-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
-            <FiHome className="h-4 w-4 text-slate-700" />
-            <h2 className="font-semibold text-slate-900">Practice Profile</h2>
+      <section className="xl:col-span-5 rounded-2xl border border-[var(--color-border-soft)] bg-white shadow-sm">
+          <div className="px-4 py-3 border-b border-[var(--color-border-soft)] flex items-center gap-2">
+            <FiHome className="h-4 w-4 text-[var(--color-text-dark)]/85" />
+            <h2 className="font-semibold text-[var(--color-text-dark)]">Practice Profile</h2>
           </div>
           <div className="p-4 space-y-3">
             <EditableRow
@@ -410,10 +410,10 @@ export default function ProviderDetail() {
           </div>
         </section>
 
-        <section className="xl:col-span-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
-            <FiUser className="h-4 w-4 text-slate-700" />
-            <h2 className="font-semibold text-slate-900">Individual Credentials</h2>
+        <section className="xl:col-span-4 rounded-2xl border border-[var(--color-border-soft)] bg-white shadow-sm">
+          <div className="px-4 py-3 border-b border-[var(--color-border-soft)] flex items-center gap-2">
+            <FiUser className="h-4 w-4 text-[var(--color-text-dark)]/85" />
+            <h2 className="font-semibold text-[var(--color-text-dark)]">Individual Credentials</h2>
           </div>
           <div className="p-4 space-y-3">
             <EditableRow
@@ -423,20 +423,20 @@ export default function ProviderDetail() {
               inputValue={editForm.npi}
               onChange={(value) => setEditForm((prev) => ({ ...prev, npi: value }))}
             />
-            <div className="rounded-lg border border-slate-200 px-3 py-2">
-              <p className="text-[11px] uppercase tracking-wide text-slate-500">Provider Category</p>
+            <div className="rounded-lg border border-[var(--color-border-soft)] px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-[var(--color-secondary)]/80">Provider Category</p>
               {isEditing && canEdit ? (
                 <select
                   value={editForm.providerCategory}
                   onChange={(e) => setEditForm((prev) => ({ ...prev, providerCategory: e.target.value as (typeof PROVIDER_CATEGORIES)[number] }))}
-                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm"
+                  className="mt-1 w-full rounded-xl border border-[var(--color-border-soft)] bg-white px-2.5 py-1.5 text-sm shadow-sm"
                 >
                   {PROVIDER_CATEGORIES.map((category) => (
                     <option key={category} value={category}>{category}</option>
                   ))}
                 </select>
               ) : (
-                <p className="text-sm font-medium text-slate-900 mt-1 break-words">{provider.providerCategory || 'Individual'}</p>
+                <p className="text-sm font-medium text-[var(--color-text-dark)] mt-1 break-words">{provider.providerCategory || 'Individual'}</p>
               )}
             </div>
             <EditableRow
@@ -500,10 +500,10 @@ export default function ProviderDetail() {
           </div>
         </section>
 
-        <section className="lg:col-span-2 xl:col-span-3 rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
-            <FiShield className="h-4 w-4 text-slate-700" />
-            <h2 className="font-semibold text-slate-900">Credential Logins</h2>
+        <section className="lg:col-span-2 xl:col-span-3 rounded-2xl border border-[var(--color-border-soft)] bg-white shadow-sm">
+          <div className="px-4 py-3 border-b border-[var(--color-border-soft)] flex items-center gap-2">
+            <FiShield className="h-4 w-4 text-[var(--color-text-dark)]/85" />
+            <h2 className="font-semibold text-[var(--color-text-dark)]">Credential Logins</h2>
           </div>
           <div className="p-4 space-y-4">
             <LoginRow
@@ -530,10 +530,10 @@ export default function ProviderDetail() {
         </section>
       </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
-          <FiFileText className="h-4 w-4 text-slate-700" />
-          <h2 className="font-semibold text-slate-900">Insurance Services</h2>
+      <section className="rounded-2xl border border-[var(--color-border-soft)] bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-[var(--color-border-soft)] flex items-center gap-2">
+          <FiFileText className="h-4 w-4 text-[var(--color-text-dark)]/85" />
+          <h2 className="font-semibold text-[var(--color-text-dark)]">Insurance Services</h2>
         </div>
         <div className="p-4">
           {isEditing && canEdit ? (
@@ -548,7 +548,7 @@ export default function ProviderDetail() {
                       setEditForm((prev) => ({ ...prev, insuranceServicesList: nextList }));
                     }}
                     placeholder={`Insurance ${index + 1}`}
-                    className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
+                    className="flex-1 rounded-xl border border-[var(--color-border-soft)] bg-white px-3 py-2 text-sm shadow-sm"
                   />
                   <button
                     type="button"
@@ -562,7 +562,7 @@ export default function ProviderDetail() {
                         insuranceServicesList: prev.insuranceServicesList.filter((_, i) => i !== index),
                       }));
                     }}
-                    className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 bg-white hover:bg-slate-50 sm:w-auto w-full"
+                    className="rounded-xl border border-[var(--color-border-soft)] px-3 py-2 text-sm text-[var(--color-text-dark)]/85 bg-white hover:bg-[var(--color-light-section)] sm:w-auto w-full"
                   >
                     Remove
                   </button>
@@ -571,19 +571,19 @@ export default function ProviderDetail() {
               <button
                 type="button"
                 onClick={() => setEditForm((prev) => ({ ...prev, insuranceServicesList: [...prev.insuranceServicesList, ''] }))}
-                className="rounded-xl border border-primary-300 px-3 py-2 text-sm text-primary-700 bg-white hover:bg-primary-50"
+                className="rounded-xl border border-[var(--color-border-soft)] px-3 py-2 text-sm text-[var(--color-primary)] bg-white hover:bg-[var(--color-secondary-soft)]"
               >
                 Add More Insurance
               </button>
             </div>
           ) : insuranceServiceNames.length === 0 ? (
-            <p className="text-sm text-slate-500">No insurance records available.</p>
+            <p className="text-sm text-[var(--color-secondary)]/80">No insurance records available.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               {insuranceServiceNames.map((serviceName) => (
-                <div key={serviceName} className="rounded-xl border border-slate-200 p-3 flex items-center gap-2 bg-slate-50/60">
-                  <FiCreditCard className="h-4 w-4 text-slate-500" />
-                  <p className="text-sm font-semibold text-slate-900">{serviceName}</p>
+                <div key={serviceName} className="rounded-xl border border-[var(--color-border-soft)] p-3 flex items-center gap-2 bg-[var(--color-light-section)]">
+                  <FiCreditCard className="h-4 w-4 text-[var(--color-secondary)]/80" />
+                  <p className="text-sm font-semibold text-[var(--color-text-dark)]">{serviceName}</p>
                 </div>
               ))}
             </div>
@@ -592,15 +592,15 @@ export default function ProviderDetail() {
       </section>
 
       {isEditing && canEdit && (
-        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-200">
-            <h2 className="font-semibold text-slate-900">Internal Notes</h2>
+        <section className="rounded-2xl border border-[var(--color-border-soft)] bg-white shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-[var(--color-border-soft)]">
+            <h2 className="font-semibold text-[var(--color-text-dark)]">Internal Notes</h2>
           </div>
           <div className="p-4">
             <textarea
               value={editForm.notes}
               onChange={(e) => setEditForm((prev) => ({ ...prev, notes: e.target.value }))}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
+              className="w-full rounded-xl border border-[var(--color-border-soft)] bg-white px-3 py-2 text-sm shadow-sm"
               rows={4}
               placeholder="Provider notes"
             />
@@ -632,31 +632,44 @@ function LoginRow({
   onUsernameChange,
   onPasswordChange,
 }: LoginRowProps) {
+  const [showPwd, setShowPwd] = useState(false);
+
   if (isEditing) {
     return (
-      <div className="rounded-xl border border-slate-200 p-3 space-y-2 bg-slate-50/50">
-        <p className="text-xs uppercase tracking-wide text-slate-500">{system}</p>
+      <div className="rounded-xl border border-[var(--color-border-soft)] p-3 space-y-2 bg-[var(--color-light-section)]">
+        <p className="text-xs uppercase tracking-wide text-[var(--color-secondary)]/80">{system}</p>
         <input
           value={editUsername || ''}
           onChange={(e) => onUsernameChange?.(e.target.value)}
-          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
+          className="w-full rounded-xl border border-[var(--color-border-soft)] bg-white px-3 py-2 text-sm shadow-sm"
           placeholder={`${system} username`}
         />
-        <input
-          value={editPassword || ''}
-          onChange={(e) => onPasswordChange?.(e.target.value)}
-          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
-          placeholder={`${system} password`}
-        />
+        <div className="relative">
+          <input
+            type={showPwd ? 'text' : 'password'}
+            value={editPassword || ''}
+            onChange={(e) => onPasswordChange?.(e.target.value)}
+            className="w-full rounded-xl border border-[var(--color-border-soft)] bg-white px-3 py-2 text-sm shadow-sm pr-10"
+            placeholder={`${system} password`}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPwd((s) => !s)}
+            aria-label={showPwd ? 'Hide password' : 'Show password'}
+            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center h-8 w-8 rounded-md text-[var(--color-secondary)] hover:text-[var(--color-text-dark)] hover:bg-[var(--color-light-section)]"
+          >
+            {showPwd ? <FiEyeOff className="h-4 w-4" /> : <FiEye className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 p-3">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{system}</p>
-      <p className="text-sm font-medium text-slate-900 mt-1 break-words">{username || 'Not Added'}</p>
-      <p className="text-sm text-slate-700 mt-1 break-words">{redact(password)}</p>
+    <div className="rounded-lg border border-[var(--color-border-soft)] p-3">
+      <p className="text-xs uppercase tracking-wide text-[var(--color-secondary)]/80">{system}</p>
+      <p className="text-sm font-medium text-[var(--color-text-dark)] mt-1 break-words">{username || 'Not Added'}</p>
+      <p className="text-sm text-[var(--color-text-dark)]/85 mt-1 break-words">{redact(password)}</p>
     </div>
   );
 }
@@ -681,8 +694,8 @@ function EditableRow({
   inputType = 'text',
 }: EditableRowProps) {
   return (
-    <div className="rounded-lg border border-slate-200 px-3 py-2">
-      <p className="text-[11px] uppercase tracking-wide text-slate-500 flex items-center gap-1">
+    <div className="rounded-lg border border-[var(--color-border-soft)] bg-[var(--color-light-section)] px-3 py-2">
+      <p className="text-[11px] uppercase tracking-wide text-[var(--color-secondary)] flex items-center gap-1">
         {icon}
         {label}
       </p>
@@ -691,11 +704,12 @@ function EditableRow({
           type={inputType}
           value={inputValue}
           onChange={(e) => onChange(e.target.value)}
-          className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm"
+          className="mt-1 w-full rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-background)] px-2.5 py-1.5 text-sm text-[var(--color-text-dark)] shadow-sm focus:ring-2 focus:ring-[var(--color-secondary)] focus:border-[var(--color-secondary)] placeholder:text-[var(--color-text-light)]/60"
         />
       ) : (
-        <p className="text-sm font-medium text-slate-900 mt-1 break-words">{hasValue(value) ? value : 'Not Added'}</p>
+        <p className="text-sm font-medium text-[var(--color-text-dark)] mt-1 break-words">{hasValue(value) ? value : 'Not Added'}</p>
       )}
     </div>
   );
 }
+

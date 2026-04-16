@@ -228,25 +228,28 @@ const enrollmentSchema = new mongoose.Schema({
 });
 
 // Unique only for linked providers (providerId exists)
+// Make uniqueness scoped to the assignee so the same provider+insurance can
+// have multiple enrollment records assigned to different users.
 enrollmentSchema.index(
-  { providerId: 1, insuranceService: 1 },
+  { providerId: 1, insuranceService: 1, assignedTo: 1 },
   {
-    unique: true,
+    // keep as index for query performance; uniqueness intentionally removed
     partialFilterExpression: { providerId: { $type: 'objectId' } },
-    name: 'providerId_1_insuranceService_1_partial',
+    name: 'providerId_1_insuranceService_1_assignedTo_1_partial',
   }
 );
 
 // Unique for enrollment-only records (no provider link) by enrollment profile NPI + insurance.
+// Similarly, scope uniqueness for enrollment-only records by assignee.
 enrollmentSchema.index(
-  { 'enrollmentProfile.npi': 1, insuranceService: 1 },
+  { 'enrollmentProfile.npi': 1, insuranceService: 1, assignedTo: 1 },
   {
-    unique: true,
+    // keep as index for query performance; uniqueness intentionally removed
     partialFilterExpression: {
       providerId: null,
       'enrollmentProfile.npi': { $type: 'string' },
     },
-    name: 'enrollmentProfile_npi_1_insuranceService_1_partial',
+    name: 'enrollmentProfile_npi_1_insuranceService_1_assignedTo_1_partial',
   }
 );
 

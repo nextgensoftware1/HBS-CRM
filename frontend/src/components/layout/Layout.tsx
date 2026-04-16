@@ -6,6 +6,10 @@ import Header from './Header';
 
 export default function Layout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('sidebarCollapsed') === 'true';
+  });
 
   useEffect(() => {
     if (isSidebarOpen) {
@@ -19,16 +23,23 @@ export default function Layout() {
     };
   }, [isSidebarOpen]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('sidebarCollapsed', String(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
+
   return (
-    <div className="flex min-h-screen bg-[radial-gradient(circle_at_top_left,_#f8fafc,_#f1f5f9_45%,_#e2e8f0)]">
+    <div className={`flex min-h-screen bg-[radial-gradient(circle_at_top_left,_#f8fafc,_#f1f5f9_45%,_#e2e8f0)] ${isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-[17.5rem]'}`}>
       {/* Sidebar */}
       <Sidebar
         isOpen={isSidebarOpen}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
         onClose={() => setIsSidebarOpen(false)}
       />
       
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0 lg:pl-0">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Header */}
         <Header onMenuToggle={() => setIsSidebarOpen((prev) => !prev)} />
         

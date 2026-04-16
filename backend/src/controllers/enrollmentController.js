@@ -363,6 +363,7 @@ exports.createEnrollment = async (req, res) => {
     const existingEnrollmentQuery = resolvedProviderId
       ? {
           providerId: resolvedProviderId,
+          assignedTo: assigneeId,
           $or: [
             { insuranceService: { $in: normalizedInsuranceServices } },
             { insuranceServices: { $in: normalizedInsuranceServices } },
@@ -371,6 +372,7 @@ exports.createEnrollment = async (req, res) => {
       : {
           providerId: null,
           'enrollmentProfile.npi': normalizedEnrollmentNpi,
+          assignedTo: assigneeId,
           $or: [
             { insuranceService: { $in: normalizedInsuranceServices } },
             { insuranceServices: { $in: normalizedInsuranceServices } },
@@ -378,11 +380,17 @@ exports.createEnrollment = async (req, res) => {
         };
 
     const existingEnrollment = await Enrollment.findOne(existingEnrollmentQuery);
-    
-    if (existingEnrollment) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Enrollment already exists for one or more selected insurance services'
+
+    const forceCreate = Boolean(req.body.forceCreate);
+
+    if (existingEnrollment && !forceCreate) {
+      // Return 409 Conflict with existing enrollment details so frontend
+      // can offer to open/reassign the existing enrollment instead of silently failing.
+      await existingEnrollment.populate('providerId assignedTo createdBy');
+      return res.status(409).json({
+        status: 'conflict',
+        message: 'Enrollment already exists for one or more selected insurance services',
+        data: { existingEnrollment }
       });
     }
     

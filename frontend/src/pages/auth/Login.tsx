@@ -1,9 +1,11 @@
 // frontend/src/pages/auth/Login.tsx
 import { useState } from 'react';
+import { FiEye, FiEyeOff } from 'react-icons/fi';
 import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../../services/authService';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../utils/notify';
+import logoImage from '../../assets/logo/logo.png';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -13,6 +15,7 @@ export default function Login() {
     email: '',
     password: '',
   });
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,22 +42,23 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-600 via-primary-700 to-primary-900 flex items-center justify-center p-4">
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{ background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%)' }}
+    >
       <div className="max-w-md w-full">
         {/* Logo/Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-full mb-4">
-            <svg className="w-10 h-10 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
+          <div className="inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 bg-[var(--color-background)] rounded-full mb-4 shadow-sm">
+            <img src={logoImage} alt="Healthcare CRM logo" className="w-14 h-14 sm:w-18 sm:h-18 object-contain" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">Healthcare CRM</h1>
-          <p className="text-primary-100">Credentialing Management System</p>
+          <h1 className="text-3xl font-bold text-white mb-2">HBS CRM</h1>
+          {/* <p className="text-white/90">Credentialing Management System</p> */}
         </div>
 
         {/* Login Card */}
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Sign in to your account</h2>
+        <div className="card p-8">
+          <h2 className="text-2xl font-bold text-[var(--color-text-dark)] mb-6">Sign in to your account</h2>
           
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Email */}
@@ -80,17 +84,30 @@ export default function Login() {
               <label htmlFor="password" className="label">
                 Password
               </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                required
-                className="input"
-                placeholder="••••••••"
-                value={formData.password}
-                onChange={handleChange}
-                disabled={loading}
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  className="input pr-10"
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={handleChange}
+                  disabled={loading}
+                  aria-describedby="toggle-password-visibility"
+                />
+                <button
+                  type="button"
+                  id="toggle-password-visibility"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
+                  onClick={() => setShowPassword((s) => !s)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center h-9 w-9 rounded-md text-[var(--color-secondary)] hover:text-[var(--color-text-dark)] hover:bg-[var(--color-light-section)]"
+                >
+                  {showPassword ? <FiEyeOff className="h-5 w-5" /> : <FiEye className="h-5 w-5" />}
+                </button>
+              </div>
             </div>
 
             {/* Remember me & Forgot password */}
@@ -100,15 +117,16 @@ export default function Login() {
                   id="remember-me"
                   name="remember-me"
                   type="checkbox"
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  className="h-4 w-4 rounded"
+                  style={{ accentColor: 'var(--color-primary)' }}
                 />
-                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
+                <label htmlFor="remember-me" className="ml-2 block text-sm text-[var(--color-text-dark)]">
                   Remember me
                 </label>
               </div>
 
               <div className="text-sm">
-                <a href="#" className="font-medium text-primary-600 hover:text-primary-500">
+                <a href="#" className="font-medium text-[var(--color-primary)] hover:opacity-90">
                   Forgot password?
                 </a>
               </div>
@@ -136,15 +154,15 @@ export default function Login() {
 
           {/* Register Link */}
           <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-[var(--color-text-dark)]">
               Don't have an account?{' '}
-              <Link to="/register" className="font-medium text-primary-600 hover:text-primary-500">
+              <Link to="/register" className="font-medium text-[var(--color-primary)] hover:opacity-90">
                 Register here
               </Link>
             </p>
-            <p className="text-sm text-gray-600 mt-2">
+            <p className="text-sm text-[var(--color-text-dark)] mt-2">
               Admin access?{' '}
-              <Link to="/admin/login" className="font-medium text-primary-600 hover:text-primary-500">
+              <Link to="/admin/login" className="font-medium text-[var(--color-primary)] hover:opacity-90">
                 Sign in as admin
               </Link>
             </p>
@@ -152,8 +170,8 @@ export default function Login() {
         </div>
 
         {/* Footer */}
-        <div className="mt-8 text-center text-primary-100 text-sm">
-          <p>&copy; 2024 Healthcare CRM. All rights reserved.</p>
+        <div className="mt-8 text-center text-white/80 text-sm">
+          <p>&copy; 2026 Healthcare CRM. All rights reserved.</p>
         </div>
       </div>
     </div>

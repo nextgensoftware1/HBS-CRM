@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { enrollmentService } from '../../services/enrollmentService';
 import { useAuthStore } from '../../store/authStore';
 import Modal from '../../components/common/Modal';
@@ -48,6 +48,7 @@ const PROVIDER_CATEGORIES = ['Individual', 'Group', 'Facility', 'Multiple'] as c
 export default function EnrollmentList() {
 	const user = useAuthStore((state) => state.user);
 	const isAdmin = user?.role === 'admin';
+	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [enrollments, setEnrollments] = useState<EnrollmentRow[]>([]);
 	const [providerOptions, setProviderOptions] = useState<ProviderOption[]>([]);
@@ -90,6 +91,7 @@ export default function EnrollmentList() {
 		enrollmentId?: string;
 		status?: string;
 	}>({ open: false });
+
 	const statusFilter = searchParams.get('status') || '';
 	const selectedProvider = providerOptions.find((provider) => provider._id === createForm.providerId);
 	const availableInsuranceServices = Array.from(
@@ -314,6 +316,21 @@ export default function EnrollmentList() {
 			await loadEnrollments();
 			notify.success(`Enrollment created successfully with ${selectedProviderInsurances.length} insurance service(s)`);
 		} catch (err: any) {
+			const status = err?.response?.status;
+			const payload = err?.response?.data;
+
+			if (status === 409 && payload?.data?.existingEnrollment) {
+				const existing = payload.data.existingEnrollment;
+				const open = window.confirm('An enrollment already exists for the selected provider/insurance. Open the existing enrollment?');
+				if (open) {
+					navigate(`/enrollments/${existing._id}`);
+					return;
+				}
+				setError(payload.message || 'Enrollment already exists');
+				notify.warningOnce(payload.message || 'Enrollment already exists', 'enrollment-exists');
+				return;
+			}
+
 			const message = err.response?.data?.message || 'Failed to create enrollment. Enrollment does not create provider records.';
 			setError(message);
 			notify.error(message);
@@ -473,19 +490,21 @@ export default function EnrollmentList() {
 		}
 	};
 
+
+
 	return (
 		<div className="space-y-4">
-			<div className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur px-4 py-4 sm:px-5 sm:py-5 shadow-sm">
+			<div className="rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-background)]/90 backdrop-blur px-4 py-4 sm:px-5 sm:py-5 shadow-[var(--shadow-md)]">
 				<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
 					<div>
-						<h1 className="text-2xl font-bold tracking-tight text-slate-900">Enrollments</h1>
-						<p className="text-slate-600">Track enrollment statuses across providers and insurance services.</p>
+						<h1 className="text-2xl font-bold tracking-tight text-[var(--color-text-dark)]">Enrollments</h1>
+						<p className="text-[var(--color-text-light)]">Track enrollment statuses across providers and insurance services.</p>
 					</div>
 					{isAdmin && (
 						<button
 							type="button"
 							onClick={openCreateEnrollmentModal}
-							className="w-full sm:w-auto rounded-xl bg-primary-600 text-white px-4 py-2.5 text-sm font-semibold hover:bg-primary-700"
+							className="w-full sm:w-auto rounded-xl bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-secondary)] text-white px-4 py-2.5 text-sm font-semibold shadow-[var(--shadow-md)] hover:from-[var(--color-secondary)] hover:to-[var(--color-primary)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-secondary)] focus:ring-offset-2"
 						>
 							Add Enrollment
 						</button>
@@ -502,8 +521,8 @@ export default function EnrollmentList() {
 									onClick={() => applyStatusFilter(option.value)}
 									className={`px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap transition-all ${
 										isActive
-											? 'bg-primary-600 text-white border-primary-600'
-											: 'bg-white text-slate-700 border-slate-300 hover:border-primary-400'
+											? 'bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-secondary)] text-white border-[var(--color-secondary)] shadow-[var(--shadow-md)]'
+											: 'bg-[var(--color-background)] text-[var(--color-text-dark)] border-[var(--color-border-soft)] hover:border-[var(--color-secondary)]/60'
 									}`}
 								>
 									{option.label}
@@ -584,19 +603,19 @@ export default function EnrollmentList() {
 						})}
 					</div>
 
-					<div className="hidden lg:block bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+					<div className="hidden lg:block bg-[var(--color-background)] border border-[var(--color-border-soft)] rounded-2xl shadow-[var(--shadow-md)] overflow-hidden">
 						<div className="overflow-x-auto">
 							<table className="min-w-[1080px] w-full text-sm">
-								<thead className="bg-slate-50/90">
+								<thead className="bg-[var(--color-light-section)]/90">
 									<tr>
-										<th className="px-4 py-3 text-left font-semibold text-slate-700">Provider</th>
-										<th className="px-4 py-3 text-left font-semibold text-slate-700">Client Name</th>
-										<th className="px-4 py-3 text-left font-semibold text-slate-700">Insurance Service</th>
-										{isAdmin && <th className="px-4 py-3 text-left font-semibold text-slate-700">Assigned User</th>}
-										<th className="px-4 py-3 text-left font-semibold text-slate-700">Status</th>
-										<th className="px-4 py-3 text-left font-semibold text-slate-700">Priority</th>
-										<th className="px-4 py-3 text-left font-semibold text-slate-700">Progress</th>
-										{isAdmin && <th className="px-4 py-3 text-left font-semibold text-slate-700">Actions</th>}
+										<th className="px-4 py-3 text-left font-semibold text-[var(--color-text-dark)]/85">Provider</th>
+										<th className="px-4 py-3 text-left font-semibold text-[var(--color-text-dark)]/85">Client Name</th>
+										<th className="px-4 py-3 text-left font-semibold text-[var(--color-text-dark)]/85">Insurance Service</th>
+										{isAdmin && <th className="px-4 py-3 text-left font-semibold text-[var(--color-text-dark)]/85">Assigned User</th>}
+										<th className="px-4 py-3 text-left font-semibold text-[var(--color-text-dark)]/85">Status</th>
+										<th className="px-4 py-3 text-left font-semibold text-[var(--color-text-dark)]/85">Priority</th>
+										<th className="px-4 py-3 text-left font-semibold text-[var(--color-text-dark)]/85">Progress</th>
+										{isAdmin && <th className="px-4 py-3 text-left font-semibold text-[var(--color-text-dark)]/85">Actions</th>}
 									</tr>
 								</thead>
 								<tbody>
@@ -906,5 +925,7 @@ export default function EnrollmentList() {
 				onConfirm={confirmAction}
 			/>
 		</div>
+
+
 	);
 }

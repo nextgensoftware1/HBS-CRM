@@ -42,27 +42,27 @@ export default function Modal({
 		}
 	}, [isOpen, initialNote]);
 
-	if (!isOpen) {
-		return null;
-	}
+	if (!isOpen) return null;
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
 			<div className="absolute inset-0 bg-black/40" onClick={onClose} />
-			<div className={`relative w-[calc(100vw-1rem)] sm:w-full ${maxWidthClass} max-h-[92dvh] sm:max-h-[92vh] rounded-xl bg-white shadow-xl border border-gray-200 flex flex-col overflow-hidden`}>
+			<div
+				className={`relative w-[calc(100vw-1rem)] sm:w-full ${maxWidthClass} max-h-[92dvh] sm:max-h-[92vh] rounded-xl bg-[var(--color-background)] shadow-xl border border-[var(--color-border-soft)] flex flex-col overflow-hidden`}
+			>
 				<button
 					type="button"
 					onClick={onClose}
 					disabled={isLoading}
-					className="absolute right-2.5 top-2.5 sm:right-3 sm:top-3 rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-60"
+					className="absolute right-2.5 top-2.5 sm:right-3 sm:top-3 rounded-md p-1 text-[var(--color-text-light)] hover:bg-[var(--color-background)]/50 disabled:opacity-60"
 					aria-label="Close modal"
 				>
 					<FiX className="h-5 w-5" />
 				</button>
 
-				<div className="px-4 sm:px-5 pt-4 sm:pt-5 pb-3 border-b border-gray-100">
-					<h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-					{message && <p className="mt-1 text-sm text-gray-600">{message}</p>}
+				<div className="px-4 sm:px-5 pt-4 sm:pt-5 pb-3 border-b border-[var(--color-border-soft)]">
+					<h3 className="text-lg font-semibold text-[var(--color-text-dark)]">{title}</h3>
+					{message && <p className="mt-1 text-sm text-[var(--color-text-light)]">{message}</p>}
 				</div>
 
 				<div className="px-4 sm:px-5 py-4 space-y-4 overflow-y-auto overflow-x-hidden">
@@ -70,24 +70,24 @@ export default function Modal({
 
 					{(requireNote || note.length > 0) && (
 						<div>
-							<label className="block text-sm font-medium text-gray-700 mb-1">{noteLabel}</label>
+							<label className="block text-sm font-medium text-[var(--color-text-light)] mb-1">{noteLabel}</label>
 							<textarea
 								value={note}
 								onChange={(e) => setNote(e.target.value)}
 								placeholder={notePlaceholder}
 								rows={3}
-								className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+								className="w-full rounded-lg border border-[var(--color-border-soft)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-secondary)]"
 							/>
 						</div>
 					)}
 				</div>
 
-				<div className="px-4 sm:px-5 py-3 border-t border-gray-100 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 bg-white">
+				<div className="px-4 sm:px-5 py-3 border-t border-[var(--color-border-soft)] flex flex-col-reverse sm:flex-row sm:justify-end gap-2 bg-[var(--color-background)]">
 					<button
 						type="button"
 						onClick={onClose}
 						disabled={isLoading}
-						className="w-full sm:w-auto px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700"
+						className="w-full sm:w-auto px-3 py-2 rounded-lg border border-[var(--color-border-soft)] text-sm text-[var(--color-text-light)]"
 					>
 						{cancelLabel}
 					</button>
@@ -95,7 +95,7 @@ export default function Modal({
 						type="button"
 						onClick={() => onConfirm(note.trim() || undefined)}
 						disabled={isLoading || (requireNote && note.trim().length === 0)}
-						className="w-full sm:w-auto px-3 py-2 rounded-lg bg-primary-600 text-sm text-white disabled:opacity-60"
+						className="w-full sm:w-auto px-3 py-2 rounded-lg bg-[var(--color-primary)] text-sm text-white disabled:opacity-60"
 					>
 						{isLoading ? 'Saving...' : confirmLabel}
 					</button>
