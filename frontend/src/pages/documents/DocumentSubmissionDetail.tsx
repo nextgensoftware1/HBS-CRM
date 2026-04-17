@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { FiCheck, FiChevronDown, FiChevronUp, FiClock, FiEye, FiFileText, FiRotateCcw, FiUser, FiX } from 'react-icons/fi';
 import { documentService } from '../../services/documentService';
+import { enrollmentService } from '../../services/enrollmentService';
 import { reminderService } from '../../services/reminderService';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../utils/notify';
@@ -64,6 +65,16 @@ const REQUIRED_DOCUMENT_CHECKLIST: RequiredDocumentItem[] = [
   { id: 'malpractice-insurance', label: 'Malpractice Insurance Certificate', documentType: 'Malpractice', keywords: ['malpractice', 'insurance'] },
 ];
 
+const mapPayerRequiredDocs = (items: any[] | undefined): RequiredDocumentItem[] => {
+  if (!Array.isArray(items)) return [];
+  return items.map((it: any, idx: number) => ({
+    id: `payer-${idx}-${String(it.documentType || 'other')}`,
+    label: String(it.documentType || 'Other'),
+    documentType: String(it.documentType || 'Other'),
+    keywords: [String(it.documentType || '')],
+  }));
+};
+
 const formatLabel = (key: string) => key
   .replace(/([A-Z])/g, ' $1')
   .replace(/^./, (m) => m.toUpperCase());
@@ -78,6 +89,9 @@ export default function DocumentSubmissionDetail() {
   const [actionLoadingFileId, setActionLoadingFileId] = useState<string | null>(null);
   const [selectedReuploadFiles, setSelectedReuploadFiles] = useState<Record<string, File | null>>({});
   const [requestedDocumentsByAdmin, setRequestedDocumentsByAdmin] = useState<string[]>([]);
+  const [adminRequestedDocs, setAdminRequestedDocs] = useState<string[]>([]);
+  const [uploadedRequestedDocs, setUploadedRequestedDocs] = useState<string[]>([]);
+  const [enrollmentChecklist, setEnrollmentChecklist] = useState<RequiredDocumentItem[] | null>(null);
   const [selectedRequestedFiles, setSelectedRequestedFiles] = useState<Record<string, File | null>>({});
   const [isFormExpanded, setIsFormExpanded] = useState(false);
   const [sendingMissingRequest, setSendingMissingRequest] = useState(false);
@@ -87,6 +101,7 @@ export default function DocumentSubmissionDetail() {
   const requiredDocumentRows = useMemo<RequiredDocumentRow[]>(() => {
     const files = submission?.files || [];
     const usedFileIds = new Set<string>();
+    const sourceChecklist: RequiredDocumentItem[] = enrollmentChecklist && enrollmentChecklist.length > 0 ? enrollmentChecklist : REQUIRED_DOCUMENT_CHECKLIST;
 
     const normalize = (value: string) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -98,7 +113,7 @@ export default function DocumentSubmissionDetail() {
       return matched;
     };
 
-    return REQUIRED_DOCUMENT_CHECKLIST.map((requiredItem) => {
+    return sourceChecklist.map((requiredItem) => {
       const keywordMatch = consumeFileByPredicate((file) => {
         if (String(file.documentType || '').trim() !== requiredItem.documentType) {
           return false;
@@ -171,7 +186,48 @@ export default function DocumentSubmissionDetail() {
 
     try {
       const data = await documentService.getSubmissionByDocumentId(id);
-      setSubmission(data);
+      // Ensure we include all document versions related to this submission
+      let mergedFiles = data.files || [];
+      try {
+        const submissionIdentifier = data.submissionId || data.submission_id || null;
+        if (submissionIdentifier) {
+          const docsResult = await documentService.getDocuments(1, 200, { submissionId: submissionIdentifier });
+          const docs = docsResult.items || [];
+          const map = new Map<string, SubmissionFile>();
+          (mergedFiles || []).forEach((f: SubmissionFile) => map.set(String(f._id), f));
+          docs.forEach((d: any) => map.set(String(d._id), {
+            _id: d._id,
+            fileName: d.fileName,
+            documentType: d.documentType,
+            status: d.status,
+            createdAt: d.createdAt,
+            version: d.version,
+          } as SubmissionFile));
+          mergedFiles = Array.from(map.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        }
+      } catch (err) {
+        // ignore extras if docs fetch fails - fall back to provided files
+      }
+
+      setSubmission({ ...data, files: mergedFiles });
+      // Load enrollment-specific required documents if available
+      try {
+        const enrollmentId = data?.enrollmentId;
+        if (enrollmentId) {
+          const enrollment = await enrollmentService.getEnrollmentById(String(enrollmentId));
+          const payer = (enrollment as any).payerId || (enrollment as any).payer || null;
+          const requiredDocs = payer?.requiredDocuments || enrollment?.requiredDocuments || null;
+          if (requiredDocs && Array.isArray(requiredDocs) && requiredDocs.length > 0) {
+            setEnrollmentChecklist(mapPayerRequiredDocs(requiredDocs));
+          } else {
+            setEnrollmentChecklist(null);
+          }
+        } else {
+          setEnrollmentChecklist(null);
+        }
+      } catch (err) {
+        setEnrollmentChecklist(null);
+      }
       setError(null);
     } catch (err: any) {
       const message = err.response?.data?.message || 'Failed to load submission details';
@@ -190,8 +246,9 @@ export default function DocumentSubmissionDetail() {
 
   useEffect(() => {
     const loadRequestedDocs = async () => {
-      if (!submission?.submissionId || isAdmin) {
+      if (!submission?.submissionId) {
         setRequestedDocumentsByAdmin([]);
+        setAdminRequestedDocs([]);
         return;
       }
 
@@ -221,8 +278,11 @@ export default function DocumentSubmissionDetail() {
         });
 
         setRequestedDocumentsByAdmin(Array.from(requestSet));
+        // Also mark admin-requested docs so admins see the state after refresh
+        setAdminRequestedDocs(Array.from(requestSet));
       } catch {
         setRequestedDocumentsByAdmin([]);
+        setAdminRequestedDocs([]);
       }
     };
 
@@ -391,6 +451,7 @@ export default function DocumentSubmissionDetail() {
         ...prev,
         [row.id]: null,
       }));
+      setUploadedRequestedDocs((prev) => Array.from(new Set([...prev, row.label])));
       notify.success(`Uploaded requested document: ${row.label}`);
       await loadSubmission(false);
     } catch (err: any) {
@@ -439,6 +500,7 @@ export default function DocumentSubmissionDetail() {
       });
 
       notify.success(`Request sent to user for: ${requestedLabelText}`);
+      setAdminRequestedDocs((prev) => Array.from(new Set([...prev, ...documentLabels])));
     } catch (err: any) {
       const message = err.response?.data?.message || 'Failed to send missing document request';
       setError(message);
@@ -658,20 +720,31 @@ export default function DocumentSubmissionDetail() {
                     <p className="text-xs text-amber-700 mt-0.5">Requested by admin</p>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`inline-flex w-fit px-2 py-0.5 rounded-full border text-xs font-medium ${statusBadgeClass(row.status)}`}>
-                    {formatStatusLabel(row.file ? row.status : 'pending')}
-                  </span>
-                  {isAdmin && !row.file && (
-                    <button
-                      type="button"
-                      onClick={() => handleRequestSingleMissingDocument(row.label)}
-                      disabled={sendingMissingRequest}
-                      className="px-2.5 py-1 text-xs rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 disabled:opacity-60"
-                    >
-                      Send Request
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                  {(() => {
+                    const displayStatus = row.file
+                      ? row.status
+                      : (uploadedRequestedDocs.includes(row.label) ? 'under_review'
+                          : (isAdmin && adminRequestedDocs.includes(row.label))
+                            ? 'under_review'
+                            : (requestedDocumentsByAdmin.includes(row.label) ? 'under_review' : 'pending'));
+
+                    return (
+                      <span className={`inline-flex w-fit px-2 py-0.5 rounded-full border text-xs font-medium ${statusBadgeClass(displayStatus)}`}>
+                        {formatStatusLabel(displayStatus)}
+                      </span>
+                    );
+                  })()}
+                  {isAdmin && !row.file && !adminRequestedDocs.includes(row.label) && (
+                        <button
+                          type="button"
+                          onClick={() => handleRequestSingleMissingDocument(row.label)}
+                          disabled={sendingMissingRequest}
+                          className="px-2.5 py-1 text-xs rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 disabled:opacity-60"
+                        >
+                          Send Request
+                        </button>
+                      )}
                   {!isAdmin && !row.file && requestedDocumentsByAdmin.includes(row.label) && (
                     <>
                       <input
@@ -683,14 +756,17 @@ export default function DocumentSubmissionDetail() {
                         className="hidden"
                         onChange={(event) => handleRequestedFilePicked(row.id, event)}
                       />
-                      <button
-                        type="button"
-                        onClick={() => triggerRequestedUploadPicker(row.id)}
-                        className="px-2.5 py-1 text-xs rounded-lg bg-primary-100 text-primary-700 hover:bg-primary-200"
-                        disabled={actionLoadingFileId === row.id}
-                      >
-                        Upload Requested
-                      </button>
+                      {/* Hide the upload button immediately after user uploads a requested doc */}
+                      {!uploadedRequestedDocs.includes(row.label) && (
+                        <button
+                          type="button"
+                          onClick={() => triggerRequestedUploadPicker(row.id)}
+                          className="px-2.5 py-1 text-xs rounded-lg bg-primary-100 text-primary-700 hover:bg-primary-200"
+                          disabled={actionLoadingFileId === row.id}
+                        >
+                          Upload Requested
+                        </button>
+                      )}
                       {selectedRequestedFiles[row.id] && (
                         <button
                           type="button"
