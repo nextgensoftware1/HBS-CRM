@@ -1,5 +1,5 @@
 // frontend/src/components/layout/Sidebar.tsx
-import { NavLink } from 'react-router-dom';
+import { NavLink, Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import logoImage from '../../assets/logo/logo.png';
 import {
@@ -164,13 +164,13 @@ export default function Sidebar({
         >
           {/* Logo image */}
           <div className={`flex items-center min-w-0 ${isCollapsed ? 'justify-center' : ''}`}>
-            <img
-              src={logoImage}
-              alt="Healthcare CRM Logo"
-              className={`${
-                isCollapsed ? 'w-10 h-10' : 'w-36 h-10'
-              } rounded-lg object-contain shrink-0 transition-all duration-200`}
-            />
+              <Link to="/" title="Home" aria-label="Home" className="inline-flex items-center">
+                <img
+                  src={logoImage}
+                  alt="Healthcare CRM Logo"
+                  className={`${isCollapsed ? 'w-10 h-10' : 'w-36 h-10'} rounded-lg object-contain shrink-0 transition-all duration-200 cursor-pointer`}
+                />
+              </Link>
           </div>
 
           {/* ── Unified toggle button (always visible) ─────────────
