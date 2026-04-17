@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { FiCheck, FiChevronDown, FiChevronUp, FiClock, FiEye, FiFileText, FiRotateCcw, FiUser, FiX } from 'react-icons/fi';
 import { documentService } from '../../services/documentService';
-import { enrollmentService } from '../../services/enrollmentService';
 import { reminderService } from '../../services/reminderService';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../utils/notify';
@@ -14,6 +13,8 @@ type SubmissionFile = {
   status: string;
   createdAt: string;
   version?: number;
+  notes?: string | null;
+  requestedDocumentLabel?: string | null;
 };
 
 type SubmissionDetail = {
@@ -65,16 +66,6 @@ const REQUIRED_DOCUMENT_CHECKLIST: RequiredDocumentItem[] = [
   { id: 'malpractice-insurance', label: 'Malpractice Insurance Certificate', documentType: 'Malpractice', keywords: ['malpractice', 'insurance'] },
 ];
 
-const mapPayerRequiredDocs = (items: any[] | undefined): RequiredDocumentItem[] => {
-  if (!Array.isArray(items)) return [];
-  return items.map((it: any, idx: number) => ({
-    id: `payer-${idx}-${String(it.documentType || 'other')}`,
-    label: String(it.documentType || 'Other'),
-    documentType: String(it.documentType || 'Other'),
-    keywords: [String(it.documentType || '')],
-  }));
-};
-
 const formatLabel = (key: string) => key
   .replace(/([A-Z])/g, ' $1')
   .replace(/^./, (m) => m.toUpperCase());
@@ -91,19 +82,56 @@ export default function DocumentSubmissionDetail() {
   const [requestedDocumentsByAdmin, setRequestedDocumentsByAdmin] = useState<string[]>([]);
   const [adminRequestedDocs, setAdminRequestedDocs] = useState<string[]>([]);
   const [uploadedRequestedDocs, setUploadedRequestedDocs] = useState<string[]>([]);
-  const [enrollmentChecklist, setEnrollmentChecklist] = useState<RequiredDocumentItem[] | null>(null);
   const [selectedRequestedFiles, setSelectedRequestedFiles] = useState<Record<string, File | null>>({});
   const [isFormExpanded, setIsFormExpanded] = useState(false);
   const [sendingMissingRequest, setSendingMissingRequest] = useState(false);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const requestedFileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
+  const normalizeRequiredLabel = (value: string) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  const requiredLabelLookup = useMemo(() => {
+    const lookup = new Map<string, string>();
+    REQUIRED_DOCUMENT_CHECKLIST.forEach((item) => {
+      lookup.set(normalizeRequiredLabel(item.label), item.label);
+    });
+    return lookup;
+  }, []);
+
+  const resolveFileHeading = (file: SubmissionFile) => {
+    const fromRequestedLabel = String(file.requestedDocumentLabel || '').trim();
+    const normalizedRequestedLabel = normalizeRequiredLabel(fromRequestedLabel);
+    if (normalizedRequestedLabel && requiredLabelLookup.has(normalizedRequestedLabel)) {
+      return requiredLabelLookup.get(normalizedRequestedLabel) || fromRequestedLabel;
+    }
+
+    const firstNoteLine = String(file.notes || '').split('\n')[0].trim();
+    const normalizedNoteLabel = normalizeRequiredLabel(firstNoteLine);
+    if (normalizedNoteLabel && requiredLabelLookup.has(normalizedNoteLabel)) {
+      return requiredLabelLookup.get(normalizedNoteLabel) || firstNoteLine;
+    }
+
+    const normalizedFileName = normalizeRequiredLabel(file.fileName);
+    const matchedChecklistItem = REQUIRED_DOCUMENT_CHECKLIST.find((item) => (
+      String(item.documentType || '').trim() === String(file.documentType || '').trim()
+      && item.keywords.some((keyword) => normalizedFileName.includes(normalizeRequiredLabel(keyword)))
+    ));
+
+    return matchedChecklistItem?.label || file.fileName;
+  };
+
   const requiredDocumentRows = useMemo<RequiredDocumentRow[]>(() => {
     const files = submission?.files || [];
     const usedFileIds = new Set<string>();
-    const sourceChecklist: RequiredDocumentItem[] = enrollmentChecklist && enrollmentChecklist.length > 0 ? enrollmentChecklist : REQUIRED_DOCUMENT_CHECKLIST;
+    const sourceChecklist: RequiredDocumentItem[] = REQUIRED_DOCUMENT_CHECKLIST;
+    const checklistTypeCounts = sourceChecklist.reduce((acc, item) => {
+      const key = String(item.documentType || '').trim();
+      acc.set(key, (acc.get(key) || 0) + 1);
+      return acc;
+    }, new Map<string, number>());
 
     const normalize = (value: string) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const isNonRejected = (file: SubmissionFile) => String(file.status || '').toLowerCase() !== 'rejected';
 
     const consumeFileByPredicate = (predicate: (file: SubmissionFile) => boolean) => {
       const matched = files.find((file) => !usedFileIds.has(file._id) && predicate(file));
@@ -114,7 +142,28 @@ export default function DocumentSubmissionDetail() {
     };
 
     return sourceChecklist.map((requiredItem) => {
-      const keywordMatch = consumeFileByPredicate((file) => {
+      const explicitRequestedLabelMatch = consumeFileByPredicate((file) => {
+        if (!isNonRejected(file)) {
+          return false;
+        }
+
+        return normalize(file.requestedDocumentLabel || '') === normalize(requiredItem.label);
+      });
+
+      const explicitNoteLabelMatch = explicitRequestedLabelMatch || consumeFileByPredicate((file) => {
+        if (!isNonRejected(file)) {
+          return false;
+        }
+
+        const firstNoteLine = String(file.notes || '').split('\n')[0] || '';
+        return normalize(firstNoteLine) === normalize(requiredItem.label);
+      });
+
+      const keywordMatch = explicitNoteLabelMatch || consumeFileByPredicate((file) => {
+        if (!isNonRejected(file)) {
+          return false;
+        }
+
         if (String(file.documentType || '').trim() !== requiredItem.documentType) {
           return false;
         }
@@ -123,9 +172,16 @@ export default function DocumentSubmissionDetail() {
         return requiredItem.keywords.some((keyword) => normalizedFileName.includes(normalize(keyword)));
       });
 
-      const fallbackMatch = keywordMatch || consumeFileByPredicate((file) => {
-        return String(file.documentType || '').trim() === requiredItem.documentType;
-      });
+      const canUseTypeFallback = (checklistTypeCounts.get(requiredItem.documentType) || 0) === 1;
+      const fallbackMatch = keywordMatch || (canUseTypeFallback
+        ? consumeFileByPredicate((file) => {
+            if (!isNonRejected(file)) {
+              return false;
+            }
+
+            return String(file.documentType || '').trim() === requiredItem.documentType;
+          })
+        : undefined);
 
       return {
         id: requiredItem.id,
@@ -136,6 +192,11 @@ export default function DocumentSubmissionDetail() {
       };
     });
   }, [submission?.files]);
+
+  const missingRequiredRows = useMemo(
+    () => requiredDocumentRows.filter((row) => !row.file),
+    [requiredDocumentRows]
+  );
 
   const displayFiles = useMemo(() => {
     return [...(submission?.files || [])].sort(
@@ -186,48 +247,7 @@ export default function DocumentSubmissionDetail() {
 
     try {
       const data = await documentService.getSubmissionByDocumentId(id);
-      // Ensure we include all document versions related to this submission
-      let mergedFiles = data.files || [];
-      try {
-        const submissionIdentifier = data.submissionId || data.submission_id || null;
-        if (submissionIdentifier) {
-          const docsResult = await documentService.getDocuments(1, 200, { submissionId: submissionIdentifier });
-          const docs = docsResult.items || [];
-          const map = new Map<string, SubmissionFile>();
-          (mergedFiles || []).forEach((f: SubmissionFile) => map.set(String(f._id), f));
-          docs.forEach((d: any) => map.set(String(d._id), {
-            _id: d._id,
-            fileName: d.fileName,
-            documentType: d.documentType,
-            status: d.status,
-            createdAt: d.createdAt,
-            version: d.version,
-          } as SubmissionFile));
-          mergedFiles = Array.from(map.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        }
-      } catch (err) {
-        // ignore extras if docs fetch fails - fall back to provided files
-      }
-
-      setSubmission({ ...data, files: mergedFiles });
-      // Load enrollment-specific required documents if available
-      try {
-        const enrollmentId = data?.enrollmentId;
-        if (enrollmentId) {
-          const enrollment = await enrollmentService.getEnrollmentById(String(enrollmentId));
-          const payer = (enrollment as any).payerId || (enrollment as any).payer || null;
-          const requiredDocs = payer?.requiredDocuments || enrollment?.requiredDocuments || null;
-          if (requiredDocs && Array.isArray(requiredDocs) && requiredDocs.length > 0) {
-            setEnrollmentChecklist(mapPayerRequiredDocs(requiredDocs));
-          } else {
-            setEnrollmentChecklist(null);
-          }
-        } else {
-          setEnrollmentChecklist(null);
-        }
-      } catch (err) {
-        setEnrollmentChecklist(null);
-      }
+      setSubmission({ ...data, files: data.files || [] });
       setError(null);
     } catch (err: any) {
       const message = err.response?.data?.message || 'Failed to load submission details';
@@ -255,11 +275,14 @@ export default function DocumentSubmissionDetail() {
       try {
         const response = await reminderService.getReminders(1, 200, {
           reminderType: 'missing_document',
-          status: 'pending',
         });
 
         const requestSet = new Set<string>();
         (response.items || []).forEach((reminder: any) => {
+          if (!['pending', 'sent'].includes(String(reminder?.status || '').toLowerCase())) {
+            return;
+          }
+
           const reminderSubmissionId = String(reminder?.metadata?.submissionId || '').trim();
           if (reminderSubmissionId !== String(submission.submissionId || '').trim()) {
             return;
@@ -515,9 +538,7 @@ export default function DocumentSubmissionDetail() {
   };
 
   const handleRequestAllMissingDocuments = async () => {
-    const missingLabels = requiredDocumentRows
-      .filter((row) => !row.file)
-      .map((row) => row.label);
+    const missingLabels = missingRequiredRows.map((row) => row.label);
     await sendMissingDocumentRequest(missingLabels);
   };
 
@@ -602,7 +623,8 @@ export default function DocumentSubmissionDetail() {
             return (
             <div key={file._id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-slate-200 rounded-xl p-3 hover:bg-slate-50/70 transition-colors">
               <div className="min-w-0">
-                <p className="font-medium text-slate-900 break-all">{file.fileName}</p>
+                <p className="font-medium text-slate-900 break-words">{resolveFileHeading(file)}</p>
+                <p className="text-xs text-slate-600 break-words">{file.fileName}</p>
                 <p className="text-xs text-slate-600 break-words flex items-center gap-1.5"><FiClock className="h-3.5 w-3.5" /> {file.documentType} | {new Date(file.createdAt).toLocaleString()}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
                   <span className={`inline-flex px-2 py-0.5 rounded-full border text-xs font-medium ${statusBadgeClass(file.status)}`}>{formatStatusLabel(file.status)}</span>
@@ -695,7 +717,7 @@ export default function DocumentSubmissionDetail() {
             <h3 className="font-semibold text-slate-900">Missing/Required Documents</h3>
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-slate-500">
-                {requiredDocumentRows.filter((row) => row.file).length}/{requiredDocumentRows.length} submitted
+                {requiredDocumentRows.length - missingRequiredRows.length}/{requiredDocumentRows.length} submitted
               </span>
               {isAdmin && (
                 <button
@@ -711,7 +733,7 @@ export default function DocumentSubmissionDetail() {
           </div>
 
           <div className="space-y-2">
-            {requiredDocumentRows.map((row) => (
+            {missingRequiredRows.map((row) => (
               <div key={row.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border border-slate-200 rounded-xl p-3 bg-slate-50/60">
                 <div>
                   <p className="text-sm font-medium text-slate-900">{row.label}</p>
@@ -722,12 +744,10 @@ export default function DocumentSubmissionDetail() {
                 </div>
                   <div className="flex items-center gap-2">
                   {(() => {
-                    const displayStatus = row.file
-                      ? row.status
-                      : (uploadedRequestedDocs.includes(row.label) ? 'under_review'
-                          : (isAdmin && adminRequestedDocs.includes(row.label))
-                            ? 'under_review'
-                            : (requestedDocumentsByAdmin.includes(row.label) ? 'under_review' : 'pending'));
+                    const displayStatus = uploadedRequestedDocs.includes(row.label) ? 'under_review'
+                      : (isAdmin && adminRequestedDocs.includes(row.label))
+                        ? 'under_review'
+                        : (requestedDocumentsByAdmin.includes(row.label) ? 'under_review' : 'pending');
 
                     return (
                       <span className={`inline-flex w-fit px-2 py-0.5 rounded-full border text-xs font-medium ${statusBadgeClass(displayStatus)}`}>

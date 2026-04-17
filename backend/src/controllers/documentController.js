@@ -504,6 +504,7 @@ exports.getAllDocuments = async (req, res) => {
           ...doc.toObject(),
           documentType: hasOnboardingPayload ? 'Insurance Intake Packet' : doc.documentType,
           filesCount: 1,
+          approvedFilesCount: doc.status === 'approved' ? 1 : 0,
           fileNames: [doc.fileName],
           fileNameSet: new Set([doc.fileName]),
           statusList: [doc.status],
@@ -523,6 +524,7 @@ exports.getAllDocuments = async (req, res) => {
         const existing = groupedMap.get(submissionId);
         existing.fileNameSet.add(doc.fileName);
         existing.filesCount = existing.fileNameSet.size;
+        existing.approvedFilesCount = Number(existing.approvedFilesCount || 0) + (doc.status === 'approved' ? 1 : 0);
         existing.fileNames = Array.from(existing.fileNameSet);
         existing.statusList.push(doc.status);
         clients.forEach((name) => existing.clientNameSet.add(name));
@@ -543,6 +545,7 @@ exports.getAllDocuments = async (req, res) => {
             ...doc.toObject(),
             documentType: hasOnboardingPayload ? 'Insurance Intake Packet' : doc.documentType,
             filesCount: existing.filesCount,
+            approvedFilesCount: existing.approvedFilesCount,
             fileNames: existing.fileNames,
             fileNameSet: existing.fileNameSet,
             statusList: existing.statusList,
@@ -561,6 +564,7 @@ exports.getAllDocuments = async (req, res) => {
     const groupedDocuments = Array.from(groupedMap.values()).map((row) => ({
       ...row,
       status: resolveGroupedStatus(row.statusList || []),
+      approvedFilesCount: Number(row.approvedFilesCount || 0),
       clients: Array.from(row.clientNameSet || []),
       clientSummary: summarizeListValues(Array.from(row.clientNameSet || [])),
       insuranceServices: Array.from(row.insuranceServiceSet || []),
@@ -928,6 +932,8 @@ exports.getDocumentSubmission = async (req, res) => {
       createdAt: doc.createdAt,
       fileUrl: doc.fileUrl,
       version: doc.version || 1,
+      notes: String(doc.notes || '').trim() || null,
+      requestedDocumentLabel: String(doc?.metadata?.requestedDocumentLabel || '').trim() || null,
     }));
 
     const latestProviderId = latest?.providerId && typeof latest.providerId === 'object'
@@ -1252,6 +1258,9 @@ exports.uploadDocument = async (req, res) => {
             clientName: clientName || existingBatchDocument.metadata?.clientName || null,
             insuranceService: insuranceService || existingBatchDocument.metadata?.insuranceService || null,
             submissionId: submissionId || existingBatchDocument.metadata?.submissionId || null,
+            requestedDocumentLabel: isRequestedUpload
+              ? (requestedDocumentLabel || existingBatchDocument.metadata?.requestedDocumentLabel || null)
+              : (existingBatchDocument.metadata?.requestedDocumentLabel || null),
             onboardingData: {
               ...existingOnboarding,
               ...parsedOnboardingData,
@@ -1335,6 +1344,9 @@ exports.uploadDocument = async (req, res) => {
             clientName: clientName || existingDocument.metadata?.clientName || null,
             insuranceService: insuranceService || existingDocument.metadata?.insuranceService || null,
             submissionId: submissionId || existingDocument.metadata?.submissionId || null,
+            requestedDocumentLabel: isRequestedUpload
+              ? (requestedDocumentLabel || existingDocument.metadata?.requestedDocumentLabel || null)
+              : (existingDocument.metadata?.requestedDocumentLabel || null),
             onboardingData: parsedOnboardingData || existingDocument.metadata?.onboardingData || null,
             previousDocumentId: existingDocument._id,
           },
@@ -1425,6 +1437,7 @@ exports.uploadDocument = async (req, res) => {
           clientName: clientName || null,
           insuranceService: insuranceService || null,
           submissionId: submissionId || null,
+          requestedDocumentLabel: isRequestedUpload ? (requestedDocumentLabel || null) : null,
           onboardingData: parsedOnboardingData || null,
         },
         uploadedBy: req.user._id

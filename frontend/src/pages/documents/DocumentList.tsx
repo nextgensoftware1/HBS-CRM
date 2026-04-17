@@ -871,6 +871,7 @@ type DocumentRow = {
   fileName: string;
   fileNames?: string[];
   filesCount?: number;
+  approvedFilesCount?: number;
   status: string;
   providerId: { _id?: string; firstName?: string; lastName?: string } | string;
   uploadedBy?: { _id?: string; fullName?: string; email?: string } | string;
@@ -891,6 +892,7 @@ type DocumentRow = {
 
 type SubmittedRequestStatus = 'approved' | 'disapproved' | 'pending' | 'submitted';
 type SubmittedRequestSelectionStatus = 'approved' | 'disapproved' | 'pending';
+const REQUIRED_DOCUMENT_SLOTS = 9;
 
 export default function DocumentList() {
   const user = useAuthStore((state) => state.user);
@@ -1187,7 +1189,40 @@ export default function DocumentList() {
     }
   };
 
-  const getOverallProgress = (_doc: DocumentRow) => 80;
+  const getDocumentApprovalRatio = (doc: DocumentRow) => {
+    const approvedFiles = Math.max(0, Number(doc.approvedFilesCount || 0));
+    return Math.min(approvedFiles / REQUIRED_DOCUMENT_SLOTS, 1);
+  };
+
+  const getInsuranceApprovedRatio = (doc: DocumentRow) => {
+    const insuranceServices = getInsuranceServicesList(doc).filter(
+      (serviceName) => normalizeServiceKey(serviceName) !== 'n/a',
+    );
+
+    if (insuranceServices.length === 0) {
+      return 0;
+    }
+
+    const approvedCount = insuranceServices.filter(
+      (serviceName) => getSubmittedRequestSelectionStatus(doc._id, serviceName) === 'approved',
+    ).length;
+
+    return approvedCount / insuranceServices.length;
+  };
+
+  const getOverallProgress = (doc: DocumentRow) => {
+    // Section 1: direct proportional progress from approved documents.
+    const approvalRatio = getDocumentApprovalRatio(doc);
+    const documentProgress = approvalRatio * 100;
+
+    // Section 2: remaining progress weighted by insurance mean.
+    // Only insurance rows with Approved contribute; Pending/Disapproved contribute 0.
+    const insuranceApprovedRatio = getInsuranceApprovedRatio(doc);
+    const remainingProgress = 100 - documentProgress;
+    const insuranceProgress = remainingProgress * insuranceApprovedRatio;
+
+    return Math.round(documentProgress + insuranceProgress);
+  };
   const getProviderColumnValue = (doc: DocumentRow) => doc.providerSummary || 'N/A';
   const getClientColumnValue = (doc: DocumentRow) => doc.clientSummary || 'N/A';
   const getInsuranceServiceColumnValue = (doc: DocumentRow) => doc.insuranceServiceSummary || 'N/A';
