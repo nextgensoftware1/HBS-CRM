@@ -164,7 +164,7 @@ export default function Sidebar({
         >
           {/* Logo image */}
           <div className={`flex items-center min-w-0 ${isCollapsed ? 'justify-center' : ''}`}>
-              <Link to="/" title="Home" aria-label="Home" className="inline-flex items-center">
+              <Link to={isAdmin ? '/dashboard' : '/workspace'} title="Home" aria-label="Home" className="inline-flex items-center">
                 <img
                   src={logoImage}
                   alt="Healthcare CRM Logo"

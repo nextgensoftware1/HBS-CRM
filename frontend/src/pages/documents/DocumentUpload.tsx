@@ -50,7 +50,7 @@ type AssignedEnrollmentOption = {
 type EnrollmentFormData = {
   providerType: 'medical' | 'behavioral' | 'other' | '';
   providerTypeOther: string;
-  enrollmentType: 'group' | 'hospital' | 'facility' | 'other' | '';
+  enrollmentType: 'group' | 'hospital' | 'facility' | 'other' | 'individual' | '';
   enrollmentTypeOther: string;
   services: {
     outPatient: boolean;
@@ -94,6 +94,9 @@ type EnrollmentFormData = {
   nppesLogin: string;
   caqhLogin: string;
   availityLogin: string;
+  nppesPassword: string;
+  caqhPassword: string;
+  availityPassword: string;
   notes: string;
 };
 
@@ -144,6 +147,9 @@ const initialFormData: EnrollmentFormData = {
   nppesLogin: '',
   caqhLogin: '',
   availityLogin: '',
+  nppesPassword: '',
+  caqhPassword: '',
+  availityPassword: '',
   notes: '',
 };
 
@@ -385,6 +391,24 @@ export default function DocumentUpload() {
           ...prev.services,
           [serviceKey]: type === 'checkbox' ? checked : value,
         },
+      }));
+      return;
+    }
+
+    // Format phone number as US format when editing the phone field
+    if (name === 'phone') {
+      const formatPhoneUS = (raw: string) => {
+        const digits = String(raw || '').replace(/\D/g, '').slice(0, 10);
+        if (!digits) return '';
+        if (digits.length < 4) return digits;
+        if (digits.length < 7) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+        return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+      };
+
+      const formatted = formatPhoneUS(value);
+      setFormData((prev) => ({
+        ...prev,
+        [name]: formatted,
       }));
       return;
     }
@@ -704,7 +728,7 @@ export default function DocumentUpload() {
               <RadioLine name="enrollmentType" value="group" current={formData.enrollmentType} onChange={handleInputChange} label="Group" />
               <RadioLine name="enrollmentType" value="hospital" current={formData.enrollmentType} onChange={handleInputChange} label="Hospital" />
               <RadioLine name="enrollmentType" value="facility" current={formData.enrollmentType} onChange={handleInputChange} label="Facility" />
-              <RadioLine name="enrollmentType" value="other" current={formData.enrollmentType} onChange={handleInputChange} label="Other" />
+              <RadioLine name="enrollmentType" value="individual" current={formData.enrollmentType} onChange={handleInputChange} label="Individual" />
               {formData.enrollmentType === 'other' && (
                 <FieldInput name="enrollmentTypeOther" value={formData.enrollmentTypeOther} onChange={handleInputChange} placeholder="Please specify" />
               )}
@@ -775,6 +799,11 @@ export default function DocumentUpload() {
                 <LabeledField label="NPPES / Pecos Portal Login" name="nppesLogin" value={formData.nppesLogin} onChange={handleInputChange} />
                 <LabeledField label="CAQH Portal Login" name="caqhLogin" value={formData.caqhLogin} onChange={handleInputChange} />
                 <LabeledField label="Availity Portal Login" name="availityLogin" value={formData.availityLogin} onChange={handleInputChange} />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-2">
+                <LabeledField label="NPPES / Pecos Portal Password" name="nppesPassword" value={formData.nppesPassword} onChange={handleInputChange} type="password" />
+                <LabeledField label="CAQH Portal Password" name="caqhPassword" value={formData.caqhPassword} onChange={handleInputChange} type="password" />
+                <LabeledField label="Availity Portal Password" name="availityPassword" value={formData.availityPassword} onChange={handleInputChange} type="password" />
               </div>
             </div>
 
